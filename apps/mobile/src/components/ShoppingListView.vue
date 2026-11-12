@@ -76,6 +76,7 @@ const editingItem = ref<ShoppingListItem | null>(null);
 const editName = ref('');
 const editAmount = ref<string>('1');
 const editUnit = ref('шт');
+const editError = ref<string | null>(null);
 
 async function handleAdd() {
   if (!productName.value.trim()) return;
@@ -96,9 +97,10 @@ function stepItemAmount(item: ShoppingListItem, direction: -1 | 1) {
 }
 
 function openEditModal(item: ShoppingListItem) {
+  editError.value = null;
   editingItem.value = item;
   editName.value = item.product_name;
-  editAmount.value = String(item.amount);
+  editAmount.value = String(item.amount).replace('.', ',');
   editUnit.value = item.unit || 'шт';
 }
 
@@ -112,20 +114,34 @@ watch(editingItem, (item) => {
 
 function closeEditModal() {
   appStore.removeBackHandler('edit-shopping-item');
+  editError.value = null;
   editingItem.value = null;
 }
 
 const editBackdrop = useBackdropDismiss(closeEditModal);
 
 function saveEditModal() {
-  if (!editingItem.value) return;
-  const parsedAmount = Number.parseFloat(editAmount.value.replace(',', '.'));
-  void shoppingStore.updateItem(editingItem.value.id, {
-    product_name: editName.value.trim() || editingItem.value.product_name,
-    amount: !Number.isNaN(parsedAmount) && parsedAmount > 0 ? parsedAmount : editingItem.value.amount,
-    unit: editUnit.value,
+  const item = editingItem.value;
+  if (!item) return;
+
+  const rawAmount = String(editAmount.value ?? '').replace(',', '.').trim();
+  const parsedAmount = Number.parseFloat(rawAmount);
+  if (Number.isNaN(parsedAmount) || parsedAmount <= 0) {
+    editError.value = 'Укажите количество больше 0';
+    return;
+  }
+
+  editError.value = null;
+  const cleanName = String(editName.value ?? '').trim() || item.product_name;
+  const cleanUnit = String(editUnit.value ?? '').trim() || 'шт';
+
+  void shoppingStore.updateItem(item.id, {
+    product_name: cleanName,
+    amount: parsedAmount,
+    unit: cleanUnit,
   });
   closeEditModal();
+  showToast('Пункт обновлён');
 }
 
 watch(shareModalOpen, (isOpen) => {
@@ -469,6 +485,7 @@ async function handleCopyText() {
           </div>
 
           <form
+            novalidate
             class="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-5 py-4 pb-[max(1.25rem,env(safe-area-inset-bottom))]"
             @submit.prevent="saveEditModal"
           >
@@ -477,8 +494,8 @@ async function handleCopyText() {
               <input
                 v-model="editName"
                 type="text"
-                required
                 class="w-full rounded-2xl border border-hairline bg-canvas px-3.5 py-2.5 text-sm text-ink focus:border-accent focus:outline-none"
+                @keyup.enter="saveEditModal"
               />
             </div>
 
@@ -487,12 +504,13 @@ async function handleCopyText() {
                 <label class="mb-1 block text-xs font-semibold text-ink">Количество</label>
                 <input
                   v-model="editAmount"
-                  type="number"
-                  min="0.01"
-                  step="any"
+                  type="text"
                   inputmode="decimal"
-                  required
-                  class="w-full rounded-2xl border border-hairline bg-canvas px-3.5 py-2.5 text-sm font-bold text-ink tabular-nums focus:border-accent focus:outline-none"
+                  autocomplete="off"
+                  class="w-full rounded-2xl border bg-canvas px-3.5 py-2.5 text-sm font-bold text-ink tabular-nums focus:border-accent focus:outline-none"
+                  :class="editError ? 'border-danger' : 'border-hairline'"
+                  @input="editError = null"
+                  @keyup.enter="saveEditModal"
                 />
               </div>
               <div>
@@ -508,17 +526,23 @@ async function handleCopyText() {
               </div>
             </div>
 
+            <p v-if="editError" role="alert" class="text-xs font-medium text-danger">
+              {{ editError }}
+            </p>
+
             <div class="flex gap-2 pt-2">
               <button
                 type="button"
                 class="tactile flex-1 rounded-2xl border border-hairline bg-canvas py-2.5 text-xs font-semibold text-ink-secondary"
-                @click="closeEditModal"
+                @click.stop="closeEditModal"
               >
                 Отмена
               </button>
               <button
-                type="submit"
+                type="button"
                 class="tactile flex-1 rounded-2xl bg-accent py-2.5 text-xs font-semibold text-accent-contrast shadow-organic-sm"
+                @pointerdown.stop.prevent="saveEditModal"
+                @click.stop.prevent="saveEditModal"
               >
                 Сохранить
               </button>

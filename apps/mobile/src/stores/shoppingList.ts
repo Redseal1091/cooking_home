@@ -313,32 +313,46 @@ export const useShoppingListStore = defineStore('mobile-shopping', () => {
    * Optimistic UI: быстрое редактирование названия, количества или единицы измерения.
    */
   async function updateItem(id: string, patch: ShoppingItemPatch) {
-    const target = items.value.find((i) => i.id === id);
-    if (!target) return;
+    const idx = items.value.findIndex((i) => i.id === id);
+    if (idx < 0) return;
 
+    const current = items.value[idx];
     const nextPatch: ShoppingItemPatch = {};
+
     if (patch.product_name !== undefined) {
       const cleanName = normalizeIngredient(patch.product_name).name;
       if (cleanName) {
-        target.product_name = cleanName;
         nextPatch.product_name = cleanName;
       }
     }
     if (patch.amount !== undefined && !Number.isNaN(patch.amount) && patch.amount > 0) {
-      const rounded = Math.round(patch.amount * 100) / 100;
-      target.amount = rounded;
-      nextPatch.amount = rounded;
+      nextPatch.amount = Math.round(patch.amount * 100) / 100;
     }
     if (patch.unit !== undefined) {
-      const cleanUnit = patch.unit.trim() || 'шт';
-      target.unit = cleanUnit;
-      nextPatch.unit = cleanUnit;
+      nextPatch.unit = patch.unit.trim() || 'шт';
     }
+
+    if (Object.keys(nextPatch).length === 0) return;
+
+    items.value = items.value.map((item) =>
+      item.id === current.id
+        ? {
+            ...item,
+            ...(nextPatch.product_name !== undefined ? { product_name: nextPatch.product_name } : {}),
+            ...(nextPatch.amount !== undefined ? { amount: nextPatch.amount } : {}),
+            ...(nextPatch.unit !== undefined ? { unit: nextPatch.unit } : {}),
+          }
+        : item,
+    );
 
     await persistCache();
 
-    if (navigator.onLine && !id.startsWith('local-') && Object.keys(nextPatch).length > 0) {
-      await supabase.from('shopping_list').update(nextPatch).eq('id', id);
+    if (navigator.onLine && !id.startsWith('local-')) {
+      try {
+        await supabase.from('shopping_list').update(nextPatch).eq('id', id);
+      } catch {
+        // Сохраняем локальное оптимистичное состояние при временной сетевой ошибке
+      }
     }
   }
 
