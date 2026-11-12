@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Пухня</string>
+    <string name="title_activity_main">Пухня</string>
+    <string name="package_name">com.family.cookbook</string>
+    <string name="custom_url_scheme">com.family.cookbook</string>
+</resources>

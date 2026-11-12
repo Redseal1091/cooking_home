@@ -1,0 +1,215 @@
+/* ==========================================================================
+   Apple Organic Minimalism — Design Tokens & Theme Layer
+   Supports Light (#F7F7F5 / #FFFFFF / #2D5A43) and Dark (#111211 / #1C1E1C / #3E7B5C)
+   Automatic system detection + manual override via <meta name="color-scheme">
+   ========================================================================== */
+
+:root {
+  /* Native UI scheme negotiation (prevents FOUC & themes scrollbars/controls) */
+  color-scheme: light dark;
+
+  /* Raw palette tokens */
+  --palette-canvas-light: #F7F7F5;
+  --palette-canvas-dark: #111211;
+
+  --palette-surface-light: #FFFFFF;
+  --palette-surface-dark: #1C1E1C;
+
+  --palette-surface-elevated-light: #FFFFFF;
+  --palette-surface-elevated-dark: #232623;
+
+  --palette-surface-muted-light: #EFECE6;
+  --palette-surface-muted-dark: #262926;
+
+  --palette-ink-light: #1A1D1A;
+  --palette-ink-dark: #F3F4F1;
+
+  --palette-ink-secondary-light: #555D56;
+  --palette-ink-secondary-dark: #A6AEA7;
+
+  --palette-ink-tertiary-light: #7A837B;
+  --palette-ink-tertiary-dark: #767E77;
+
+  --palette-accent-light: #2D5A43;
+  --palette-accent-dark: #3E7B5C;
+
+  --palette-accent-hover-light: #234735;
+  --palette-accent-hover-dark: #4B916D;
+
+  --palette-accent-soft-light: rgba(45, 90, 67, 0.10);
+  --palette-accent-soft-dark: rgba(62, 123, 92, 0.18);
+
+  --palette-border-light: rgba(26, 29, 26, 0.08);
+  --palette-border-dark: rgba(243, 244, 241, 0.09);
+
+  --palette-danger-light: #B84237;
+  --palette-danger-dark: #E06C60;
+
+  --palette-warm-light: #B67D3E;
+  --palette-warm-dark: #D99F5E;
+
+  /* Default (Light) semantic tokens — fallback for engines without light-dark() */
+  --color-canvas: var(--palette-canvas-light);
+  --color-surface: var(--palette-surface-light);
+  --color-surface-elevated: var(--palette-surface-elevated-light);
+  --color-surface-muted: var(--palette-surface-muted-light);
+  --color-ink: var(--palette-ink-light);
+  --color-ink-secondary: var(--palette-ink-secondary-light);
+  --color-ink-tertiary: var(--palette-ink-tertiary-light);
+  --color-accent: var(--palette-accent-light);
+  --color-accent-hover: var(--palette-accent-hover-light);
+  --color-accent-soft: var(--palette-accent-soft-light);
+  --color-accent-contrast: #FFFFFF;
+  --color-border: var(--palette-border-light);
+  --color-danger: var(--palette-danger-light);
+  --color-warm: var(--palette-warm-light);
+
+  --shadow-organic-sm: 0 2px 10px -2px rgba(26, 29, 26, 0.05), 0 1px 3px rgba(26, 29, 26, 0.03);
+  --shadow-organic-md: 0 10px 30px -8px rgba(26, 29, 26, 0.08), 0 4px 12px -4px rgba(26, 29, 26, 0.04);
+  --shadow-organic-lg: 0 20px 48px -12px rgba(26, 29, 26, 0.14), 0 8px 20px -6px rgba(26, 29, 26, 0.06);
+
+  --bg-organic-gradient:
+    radial-gradient(circle at 12% 0%, rgba(164, 184, 152, 0.16) 0%, transparent 52%),
+    radial-gradient(circle at 88% 18%, rgba(226, 213, 185, 0.22) 0%, transparent 48%),
+    var(--color-canvas);
+}
+
+/* Reflect <meta name="color-scheme"> override back onto :root */
+:root:has(> head > meta[name="color-scheme"][content="dark"]) {
+  color-scheme: dark;
+}
+
+:root:has(> head > meta[name="color-scheme"][content="light"]) {
+  color-scheme: light;
+}
+
+/* System Dark preference fallback when not pinned to light */
+@media (prefers-color-scheme: dark) {
+  :root:not(:has(> head > meta[name="color-scheme"][content="light"])):not(.light) {
+    --color-canvas: var(--palette-canvas-dark);
+    --color-surface: var(--palette-surface-dark);
+    --color-surface-elevated: var(--palette-surface-elevated-dark);
+    --color-surface-muted: var(--palette-surface-muted-dark);
+    --color-ink: var(--palette-ink-dark);
+    --color-ink-secondary: var(--palette-ink-secondary-dark);
+    --color-ink-tertiary: var(--palette-ink-tertiary-dark);
+    --color-accent: var(--palette-accent-dark);
+    --color-accent-hover: var(--palette-accent-hover-dark);
+    --color-accent-soft: var(--palette-accent-soft-dark);
+    --color-border: var(--palette-border-dark);
+    --color-danger: var(--palette-danger-dark);
+    --color-warm: var(--palette-warm-dark);
+
+    --shadow-organic-sm: 0 2px 10px -2px rgba(0, 0, 0, 0.32);
+    --shadow-organic-md: 0 12px 32px -8px rgba(0, 0, 0, 0.48);
+    --shadow-organic-lg: 0 24px 56px -12px rgba(0, 0, 0, 0.64);
+
+    --bg-organic-gradient:
+      radial-gradient(circle at 15% 0%, rgba(45, 90, 67, 0.24) 0%, transparent 55%),
+      radial-gradient(circle at 85% 20%, rgba(30, 52, 41, 0.30) 0%, transparent 50%),
+      var(--color-canvas);
+  }
+}
+
+/* Explicit dark override fallback (via meta tag or .dark class) */
+:root:has(> head > meta[name="color-scheme"][content="dark"]),
+:root.dark {
+  --color-canvas: var(--palette-canvas-dark);
+  --color-surface: var(--palette-surface-dark);
+  --color-surface-elevated: var(--palette-surface-elevated-dark);
+  --color-surface-muted: var(--palette-surface-muted-dark);
+  --color-ink: var(--palette-ink-dark);
+  --color-ink-secondary: var(--palette-ink-secondary-dark);
+  --color-ink-tertiary: var(--palette-ink-tertiary-dark);
+  --color-accent: var(--palette-accent-dark);
+  --color-accent-hover: var(--palette-accent-hover-dark);
+  --color-accent-soft: var(--palette-accent-soft-dark);
+  --color-border: var(--palette-border-dark);
+  --color-danger: var(--palette-danger-dark);
+  --color-warm: var(--palette-warm-dark);
+
+  --shadow-organic-sm: 0 2px 10px -2px rgba(0, 0, 0, 0.32);
+  --shadow-organic-md: 0 12px 32px -8px rgba(0, 0, 0, 0.48);
+  --shadow-organic-lg: 0 24px 56px -12px rgba(0, 0, 0, 0.64);
+
+  --bg-organic-gradient:
+    radial-gradient(circle at 15% 0%, rgba(45, 90, 67, 0.24) 0%, transparent 55%),
+    radial-gradient(circle at 85% 20%, rgba(30, 52, 41, 0.30) 0%, transparent 50%),
+    var(--color-canvas);
+}
+
+/* Modern light-dark() enhancement for browsers supporting CSS Color 5 */
+@supports (color: light-dark(white, black)) {
+  :root {
+    --color-canvas: light-dark(var(--palette-canvas-light), var(--palette-canvas-dark));
+    --color-surface: light-dark(var(--palette-surface-light), var(--palette-surface-dark));
+    --color-surface-elevated: light-dark(var(--palette-surface-elevated-light), var(--palette-surface-elevated-dark));
+    --color-surface-muted: light-dark(var(--palette-surface-muted-light), var(--palette-surface-muted-dark));
+    --color-ink: light-dark(var(--palette-ink-light), var(--palette-ink-dark));
+    --color-ink-secondary: light-dark(var(--palette-ink-secondary-light), var(--palette-ink-secondary-dark));
+    --color-ink-tertiary: light-dark(var(--palette-ink-tertiary-light), var(--palette-ink-tertiary-dark));
+    --color-accent: light-dark(var(--palette-accent-light), var(--palette-accent-dark));
+    --color-accent-hover: light-dark(var(--palette-accent-hover-light), var(--palette-accent-hover-dark));
+    --color-accent-soft: light-dark(var(--palette-accent-soft-light), var(--palette-accent-soft-dark));
+    --color-border: light-dark(var(--palette-border-light), var(--palette-border-dark));
+    --color-danger: light-dark(var(--palette-danger-light), var(--palette-danger-dark));
+    --color-warm: light-dark(var(--palette-warm-light), var(--palette-warm-dark));
+  }
+}
+
+html {
+  accent-color: var(--color-accent);
+  font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  background: var(--bg-organic-gradient);
+  background-attachment: fixed;
+  color: var(--color-ink);
+  min-height: 100dvh;
+  margin: 0;
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4, .font-display {
+  font-family: 'Nunito', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  letter-spacing: -0.015em;
+}
+
+/* Tabular numbers for nutrition values, calculator & timers */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Progressive enhancement for Apple-like continuous squircle corners */
+@supports (corner-shape: squircle) {
+  .squircle {
+    corner-shape: squircle;
+  }
+}
+
+/* Tactile spring press & glassmorphism helpers */
+.tactile {
+  transition: transform 150ms cubic-bezier(0.22, 1, 0.36, 1), background-color 150ms ease, opacity 150ms ease;
+}
+
+.tactile:active {
+  transform: scale(0.95);
+}
+
+.glass-pill {
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  background-color: rgba(0, 0, 0, 0.42);
+  color: #FFFFFF;
+}
+
+/* Forced Colors Mode accessibility fallback */
+@media (forced-colors: active) {
+  .organic-card,
+  .glass-pill {
+    border: 1px solid CanvasText;
+  }
+}

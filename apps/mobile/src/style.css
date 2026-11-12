@@ -1,0 +1,61 @@
+@import '../../../packages/shared/src/styles/theme.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    overscroll-behavior-y: contain;
+  }
+
+  dialog:modal {
+    overscroll-behavior: contain;
+  }
+
+  dialog::backdrop {
+    overflow: hidden;
+    overscroll-behavior: contain;
+    background-color: rgba(17, 18, 17, 0.56);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+}
+
+.organic-input:is(:user-invalid) {
+  border-color: var(--color-danger);
+}
+
+.organic-input:is(:user-invalid) + .field-error {
+  display: flex;
+}
+
+/* Hide scrollbars cleanly for horizontal pill filters & snap carousels */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Horizontal snap carousel */
+.snap-carousel {
+  display: flex;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  touch-action: manipulation;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .snap-carousel {
+    scroll-behavior: smooth;
+  }
+}
+
+.snap-carousel-item {
+  scroll-snap-align: start;
+}

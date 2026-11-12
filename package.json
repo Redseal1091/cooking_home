@@ -1,0 +1,23 @@
+{
+  "name": "family-cookbook-monorepo",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Закрытая семейная кулинарная книга (Web Admin + Android Mobile)",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:admin": "npm --workspace=@cookbook/admin run dev",
+    "dev:mobile": "npm --workspace=@cookbook/mobile run dev",
+    "build:shared": "npm --workspace=@cookbook/shared run build",
+    "build:admin": "npm --workspace=@cookbook/admin run build",
+    "build:mobile": "npm --workspace=@cookbook/mobile run build",
+    "typecheck": "npm --workspace=@cookbook/shared run typecheck && npm --workspace=@cookbook/admin run typecheck && npm --workspace=@cookbook/mobile run typecheck",
+    "android:sync": "npm run build:mobile && npm --workspace=@cookbook/mobile run cap:sync",
+    "android:open": "npm --workspace=@cookbook/mobile run cap:open"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3"
+  }
+}

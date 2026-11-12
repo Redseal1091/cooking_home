@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Minimalist open cookbook / chef emblem -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M34,37 C34,34.8 35.8,33 38,33 L52,33 L52,73 L38,73 C35.8,73 34,71.2 34,69 Z" />
+    <path
+        android:fillColor="#F7F7F5"
+        android:fillAlpha="0.9"
+        android:pathData="M56,33 L70,33 C72.2,33 74,34.8 74,37 L74,69 C74,71.2 72.2,73 70,73 L56,73 Z" />
+    <!-- Subtle bookmark ribbon -->
+    <path
+        android:fillColor="#E8C58E"
+        android:pathData="M61,33 L67,33 L67,48 L64,45 L61,48 Z" />
+</vector>
