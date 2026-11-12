@@ -8,6 +8,7 @@ import {
   applyStatusBarAppearance,
   ensureEdgeToEdgeStatusBar,
 } from '@/composables/useStatusBar';
+import { useAppUpdater } from '@/composables/useAppUpdater';
 import { useAppStore } from '@/stores/app';
 import { useMobileRecipesStore } from '@/stores/recipes';
 import { useShoppingListStore } from '@/stores/shoppingList';
@@ -18,8 +19,10 @@ import ShoppingListView from '@/components/ShoppingListView.vue';
 import SettingsView from '@/components/SettingsView.vue';
 import FloatingTimerBar from '@/components/FloatingTimerBar.vue';
 import BottomTabBar, { type MobileTab } from '@/components/BottomTabBar.vue';
+import UpdateToastBanner from '@/components/UpdateToastBanner.vue';
 
 const { isDark } = useTheme();
+const { checkForUpdateQuietly } = useAppUpdater();
 
 const appStore = useAppStore();
 const recipesStore = useMobileRecipesStore();
@@ -100,6 +103,7 @@ onMounted(async () => {
     recipesStore.loadInitial(),
     shoppingStore.loadInitial(),
   ]);
+  void checkForUpdateQuietly();
 });
 
 onUnmounted(() => {
@@ -141,6 +145,8 @@ onUnmounted(() => {
       </Transition>
 
       <FloatingTimerBar />
+
+      <UpdateToastBanner :has-bottom-bar="!selectedRecipe" />
 
       <BottomTabBar
         v-if="!selectedRecipe"

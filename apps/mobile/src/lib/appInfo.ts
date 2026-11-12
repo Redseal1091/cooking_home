@@ -1,6 +1,6 @@
 import { Preferences } from '@capacitor/preferences';
 
-export const APP_VERSION = '1.3.0';
+export const APP_VERSION = '1.3.1';
 
 const ENV_GITHUB_REPO = (
   (import.meta.env.VITE_GITHUB_REPO as string | undefined) ?? ''

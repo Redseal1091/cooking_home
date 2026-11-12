@@ -131,11 +131,11 @@ function getCaloriesPer100g(r: RecipeWithIngredients): number | null {
 
 <template>
   <div class="overflow-x-clip pb-28">
-    <!-- Закреплённая шапка каталога со стеклянным размытием под статус-бар -->
-    <header class="sticky top-0 z-20 border-b border-hairline/50 bg-canvas/80 px-4 pb-3 pt-[max(env(safe-area-inset-top),2rem)] backdrop-blur-xl sm:px-5">
+    <!-- Закреплённая шапка каталога без разделительных рамок и полос -->
+    <header class="sticky top-0 z-20 bg-canvas/85 px-4 pb-3 pt-[max(env(safe-area-inset-top),2rem)] backdrop-blur-xl sm:px-5">
       <div class="flex items-center justify-between gap-3">
         <div class="flex min-w-0 flex-1 items-center gap-3">
-          <div class="h-11 w-11 shrink-0 overflow-hidden rounded-2xl border border-hairline bg-[#FDF0D5] shadow-organic-sm">
+          <div class="h-11 w-11 shrink-0 overflow-hidden rounded-2xl bg-[#FDF0D5]">
             <img
               src="/mascot.png"
               alt="Пухня"

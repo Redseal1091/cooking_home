@@ -52,7 +52,7 @@ const scaleFactor = ref(1);
 const showVideoPlayer = ref(false);
 const checkedIngredients = ref<Set<string>>(new Set());
 const checkedSteps = ref<Set<string>>(new Set());
-const reverseTarget = ref<ScaledIngredient | null>(null);
+const activeIngredientForCalc = ref<ScaledIngredient | null>(null);
 
 const addingToShopping = ref(false);
 const shoppingFeedback = ref<string | null>(null);
@@ -94,6 +94,7 @@ function setMultiplier(mult: number) {
 
 function applyReverseFactor(newFactor: number) {
   scaleFactor.value = newFactor;
+  activeIngredientForCalc.value = null;
 }
 
 function toggleIngredientCheck(id: string) {
@@ -459,7 +460,7 @@ function formatNoteDate(iso: string): string {
                   type="button"
                   title="Нажмите для пересчёта от остатков"
                   class="tactile shrink-0 rounded-full bg-accent-soft px-3 py-1 text-xs font-bold text-accent tabular-nums hover:bg-accent hover:text-accent-contrast"
-                  @click="reverseTarget = ing"
+                  @click="activeIngredientForCalc = ing"
                 >
                   {{ ing.formattedAmount }} {{ ing.unit }}
                 </button>
@@ -697,9 +698,9 @@ function formatNoteDate(iso: string): string {
 
     <!-- Модалка обратного калькулятора -->
     <ReverseCalculatorModal
-      :open="Boolean(reverseTarget)"
-      :ingredient="reverseTarget"
-      @close="reverseTarget = null"
+      :open="Boolean(activeIngredientForCalc)"
+      :ingredient="activeIngredientForCalc"
+      @close="activeIngredientForCalc = null"
       @apply="applyReverseFactor"
     />
   </div>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, onUnmounted, ref, watch } from 'vue';
 import {
   Camera,
   CheckCircle2,
@@ -43,8 +43,8 @@ interface LocalIngredientRow {
 }
 
 const appStore = useAppStore();
-const dialogRef = ref<HTMLDialogElement | null>(null);
 const fileInputRef = ref<HTMLInputElement | null>(null);
+const HANDLER_ID = 'suggest-recipe-modal';
 
 const isFullMode = ref(false);
 const submitting = ref(false);
@@ -118,35 +118,28 @@ function resetForm() {
   customSectionName.value = '';
 }
 
-watch(
-  () => props.open,
-  (isOpen) => {
-    const dialog = dialogRef.value;
-    if (!dialog) return;
-    if (isOpen) {
-      errorMsg.value = null;
-      if (!dialog.open) dialog.showModal();
-      appStore.pushBackHandler('suggest-recipe-modal', () => {
-        dialogRef.value?.close();
-      });
-    } else {
-      appStore.removeBackHandler('suggest-recipe-modal');
-      if (dialog.open) dialog.close();
-    }
-  },
-);
-
-function handleDialogClose() {
-  appStore.removeBackHandler('suggest-recipe-modal');
-  if (dialogRef.value) dialogRef.value.returnValue = '';
+function requestClose() {
+  if (submitting.value) return;
+  appStore.removeBackHandler(HANDLER_ID);
   emit('close');
 }
 
-function onBackdropClick(event: MouseEvent) {
-  if (!submitting.value && event.target === event.currentTarget) {
-    dialogRef.value?.close();
-  }
-}
+watch(
+  () => props.open,
+  (isOpen) => {
+    if (isOpen) {
+      errorMsg.value = null;
+      appStore.pushBackHandler(HANDLER_ID, requestClose);
+    } else {
+      appStore.removeBackHandler(HANDLER_ID);
+    }
+  },
+  { immediate: true },
+);
+
+onUnmounted(() => {
+  appStore.removeBackHandler(HANDLER_ID);
+});
 
 function addIngredient(sectionName = '') {
   ingredients.value.push(createIngredientRow(sectionName));
@@ -382,7 +375,8 @@ async function handleSubmit() {
       ? 'Спасибо! Ваш рецепт отправлен редактору книги.'
       : 'Спасибо! Идея рецепта отправлена в семейную книгу.';
     resetForm();
-    dialogRef.value?.close();
+    appStore.removeBackHandler(HANDLER_ID);
+    emit('close');
     emit('submitted', msg);
   } catch (err) {
     errorMsg.value =
@@ -394,47 +388,52 @@ async function handleSubmit() {
 </script>
 
 <template>
-  <dialog
-    ref="dialogRef"
-    aria-labelledby="suggest-modal-title"
-    class="open:flex fixed inset-0 m-0 h-dvh max-h-none w-full max-w-none flex-col items-center justify-end overflow-hidden border-0 bg-transparent p-0 pt-[max(18dvh,calc(env(safe-area-inset-top)+3rem))] sm:justify-center sm:px-4 sm:pb-6"
-    @close="handleDialogClose"
-    @click="onBackdropClick"
-  >
-    <datalist id="mobile-ingredient-sections">
-      <option v-for="sec in sectionSuggestions" :key="sec" :value="sec" />
-    </datalist>
-
+  <Teleport to="body">
     <div
-      class="flex max-h-[80dvh] w-full max-w-lg flex-col overflow-hidden rounded-t-3xl border border-b-0 border-hairline bg-surface text-ink shadow-organic-lg sm:rounded-3xl sm:border-b"
+      v-if="open"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="suggest-modal-title"
+      class="fixed inset-0 z-50 flex items-end justify-center bg-black/50 pt-[max(18dvh,calc(env(safe-area-inset-top)+3rem))] backdrop-blur-sm sm:items-center sm:px-4 sm:pb-6"
+      @click.self="requestClose"
     >
-      <!-- Зафиксированная сверху шапка модалки -->
-      <div class="flex shrink-0 items-center justify-between gap-3 border-b border-hairline px-5 py-4">
-        <div class="flex min-w-0 items-center gap-2.5">
-          <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-accent-soft text-accent">
-            <Sparkles class="h-4 w-4" aria-hidden="true" />
+      <datalist id="mobile-ingredient-sections">
+        <option v-for="sec in sectionSuggestions" :key="sec" :value="sec" />
+      </datalist>
+
+      <div
+        class="flex max-h-[80dvh] w-full max-w-lg flex-col overflow-hidden rounded-t-3xl bg-surface text-ink shadow-organic-lg sm:rounded-3xl"
+        @click.stop
+        @mousedown.stop
+        @touchstart.stop
+      >
+        <!-- Зафиксированная сверху шапка модалки -->
+        <div class="flex shrink-0 items-center justify-between gap-3 border-b border-hairline px-5 py-4">
+          <div class="flex min-w-0 items-center gap-2.5">
+            <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-accent-soft text-accent">
+              <Sparkles class="h-4 w-4" aria-hidden="true" />
+            </div>
+            <div class="min-w-0">
+              <h3 id="suggest-modal-title" class="truncate font-display text-base font-bold text-ink">
+                Предложить рецепт
+              </h3>
+              <p class="truncate text-[11px] text-ink-secondary">
+                {{ isFullMode ? 'Полный конструктор рецепта' : 'Быстрая идея для семейной книги' }}
+              </p>
+            </div>
           </div>
-          <div class="min-w-0">
-            <h3 id="suggest-modal-title" class="truncate font-display text-base font-bold text-ink">
-              Предложить рецепт
-            </h3>
-            <p class="truncate text-[11px] text-ink-secondary">
-              {{ isFullMode ? 'Полный конструктор рецепта' : 'Быстрая идея для семейной книги' }}
-            </p>
-          </div>
+
+          <button
+            type="button"
+            aria-label="Закрыть"
+            class="tactile shrink-0 rounded-full bg-surface-muted p-1.5 text-ink-secondary"
+            @click="requestClose"
+          >
+            <X class="h-4 w-4" aria-hidden="true" />
+          </button>
         </div>
 
-        <button
-          type="button"
-          aria-label="Закрыть"
-          class="tactile shrink-0 rounded-full bg-surface-muted p-1.5 text-ink-secondary"
-          @click="dialogRef?.close()"
-        >
-          <X class="h-4 w-4" aria-hidden="true" />
-        </button>
-      </div>
-
-      <!-- Прокручиваемое тело формы -->
+        <!-- Прокручиваемое тело формы -->
       <form
         class="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-5 py-4 pb-[max(1.25rem,env(safe-area-inset-bottom))]"
         @submit.prevent="handleSubmit"
@@ -847,6 +846,7 @@ async function handleSubmit() {
           </button>
         </div>
       </form>
+      </div>
     </div>
-  </dialog>
+  </Teleport>
 </template>

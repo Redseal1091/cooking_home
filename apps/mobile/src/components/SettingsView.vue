@@ -1,11 +1,10 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue';
+import { onMounted, onUnmounted, ref, watch } from 'vue';
 import {
   ArrowUpCircle,
   CheckCircle2,
   ChefHat,
   DownloadCloud,
-  ExternalLink,
   GitBranch,
   Loader2,
   Monitor,
@@ -18,10 +17,10 @@ import {
   X,
 } from 'lucide-vue-next';
 import { useTheme, type ThemePreference } from '@/composables/useTheme';
+import { useAppUpdater } from '@/composables/useAppUpdater';
 import { clearOfflineCache } from '@/lib/offlineCache';
 import {
   APP_VERSION,
-  checkGithubLatestRelease,
   DEFAULT_GITHUB_REPO,
   HAS_ENV_GITHUB_REPO,
   loadSavedGithubRepo,
@@ -35,6 +34,16 @@ import SuggestRecipeModal from '@/components/SuggestRecipeModal.vue';
 const appStore = useAppStore();
 const recipesStore = useMobileRecipesStore();
 const { preference, setTheme } = useTheme();
+const {
+  checkingUpdates,
+  updateCheckError,
+  downloadingUpdate,
+  downloadProgress,
+  downloadIndeterminate,
+  downloadError,
+  checkForUpdateManual,
+  downloadAndInstallUpdate,
+} = useAppUpdater();
 
 const cacheMessage = ref<string | null>(null);
 const clearingCache = ref(false);
@@ -44,10 +53,7 @@ const toastMessage = ref<string | null>(null);
 
 const githubRepo = ref(DEFAULT_GITHUB_REPO);
 const showRepoEditor = ref(!HAS_ENV_GITHUB_REPO);
-const checkingUpdates = ref(false);
-const updateError = ref<string | null>(null);
-const updateInfo = ref<ReleaseUpdateInfo | null>(null);
-const updateDialogRef = ref<HTMLDialogElement | null>(null);
+const modalUpdateInfo = ref<ReleaseUpdateInfo | null>(null);
 
 onMounted(async () => {
   githubRepo.value = await loadSavedGithubRepo();
@@ -108,63 +114,35 @@ async function saveRepoSetting() {
 }
 
 async function handleCheckUpdates() {
-  if (!navigator.onLine) {
-    updateError.value = 'Нет подключения к интернету для проверки обновлений.';
-    return;
-  }
-
-  checkingUpdates.value = true;
-  updateError.value = null;
-
-  try {
-    githubRepo.value = await saveGithubRepo(githubRepo.value);
-    const info = await checkGithubLatestRelease(githubRepo.value);
-    updateInfo.value = info;
-  } catch (err) {
-    updateError.value = err instanceof Error ? err.message : 'Ошибка проверки обновлений';
-  } finally {
-    checkingUpdates.value = false;
+  const info = await checkForUpdateManual(githubRepo.value);
+  githubRepo.value = await loadSavedGithubRepo();
+  if (info) {
+    modalUpdateInfo.value = info;
   }
 }
 
-watch(updateInfo, (val) => {
-  const dialog = updateDialogRef.value;
-  if (!dialog) return;
+watch(modalUpdateInfo, (val) => {
   if (val) {
-    if (!dialog.open) dialog.showModal();
-    appStore.pushBackHandler('app-update-modal', () => {
-      updateDialogRef.value?.close();
-    });
+    appStore.pushBackHandler('app-update-modal', closeUpdateDialog);
   } else {
     appStore.removeBackHandler('app-update-modal');
-    if (dialog.open) dialog.close();
   }
 });
 
 function closeUpdateDialog() {
+  if (downloadingUpdate.value) return;
   appStore.removeBackHandler('app-update-modal');
-  updateInfo.value = null;
+  modalUpdateInfo.value = null;
 }
 
-function onUpdateBackdropClick(event: MouseEvent) {
-  if (event.target === event.currentTarget) {
-    updateDialogRef.value?.close();
-  }
-}
-
-function openApkExternally(event: MouseEvent) {
-  const url = updateInfo.value?.apkDownloadUrl;
-  if (!url) return;
-  const opened = window.open(url, '_system');
-  if (opened) {
-    event.preventDefault();
-  }
-}
+onUnmounted(() => {
+  appStore.removeBackHandler('app-update-modal');
+});
 </script>
 
 <template>
   <div class="overflow-x-clip pb-28">
-    <header class="sticky top-0 z-20 border-b border-hairline/50 bg-canvas/80 px-4 pb-3 pt-[max(env(safe-area-inset-top),2rem)] backdrop-blur-xl sm:px-5">
+    <header class="sticky top-0 z-20 bg-canvas/85 px-4 pb-3 pt-[max(env(safe-area-inset-top),2rem)] backdrop-blur-xl sm:px-5">
       <p class="text-xs font-medium uppercase tracking-wider text-accent">
         Персонализация
       </p>
@@ -342,8 +320,8 @@ function openApkExternally(event: MouseEvent) {
         </span>
       </button>
 
-      <p v-if="updateError" role="alert" class="mt-2.5 text-center text-xs text-danger">
-        {{ updateError }}
+      <p v-if="updateCheckError" role="alert" class="mt-2.5 text-center text-xs text-danger">
+        {{ updateCheckError }}
       </p>
     </section>
     </div>
@@ -355,84 +333,117 @@ function openApkExternally(event: MouseEvent) {
       @submitted="(msg) => showToast(msg)"
     />
 
-    <!-- Модалка найденного обновления APK -->
-    <dialog
-      ref="updateDialogRef"
-      aria-labelledby="update-modal-title"
-      class="open:flex fixed inset-0 m-0 h-dvh max-h-none w-full max-w-none flex-col items-center justify-end overflow-hidden border-0 bg-transparent p-0 pt-[max(18dvh,calc(env(safe-area-inset-top)+3rem))] sm:justify-center sm:px-4 sm:pb-6"
-      @close="closeUpdateDialog"
-      @click="onUpdateBackdropClick"
-    >
+    <!-- Модалка найденного обновления APK (<Teleport to="body">) -->
+    <Teleport to="body">
       <div
-        class="flex max-h-[80dvh] w-full max-w-sm flex-col overflow-hidden rounded-t-3xl border border-b-0 border-hairline bg-surface text-ink shadow-organic-lg sm:rounded-3xl sm:border-b"
+        v-if="modalUpdateInfo"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="update-modal-title"
+        class="fixed inset-0 z-50 flex items-end justify-center bg-black/50 pt-[max(18dvh,calc(env(safe-area-inset-top)+3rem))] backdrop-blur-sm sm:items-center sm:px-4 sm:pb-6"
+        @click.self="closeUpdateDialog"
       >
-        <div class="flex shrink-0 items-start justify-between gap-3 border-b border-hairline px-5 py-4">
-          <div class="min-w-0">
-            <span
-              class="inline-block rounded-full px-2.5 py-0.5 text-[11px] font-bold tabular-nums"
-              :class="
-                updateInfo?.hasUpdate
-                  ? 'bg-accent-soft text-accent'
-                  : 'bg-surface-muted text-ink-secondary'
-              "
-            >
-              {{
-                updateInfo?.hasUpdate
-                  ? `Доступна новая версия v${updateInfo?.latestVersion}`
-                  : `Текущая версия актуальна (v${updateInfo?.latestVersion})`
-              }}
-            </span>
-            <h3 id="update-modal-title" class="mt-1.5 font-display text-lg font-extrabold text-ink">
-              {{ updateInfo?.releaseName || 'Обновление Пухни' }}
-            </h3>
-          </div>
-          <button
-            type="button"
-            aria-label="Закрыть"
-            class="tactile shrink-0 rounded-full bg-surface-muted p-1.5 text-ink-secondary"
-            @click="updateDialogRef?.close()"
-          >
-            <X class="h-4 w-4" aria-hidden="true" />
-          </button>
-        </div>
-
-        <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-4 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
-          <div
-            v-if="updateInfo?.changelog"
-            class="max-h-48 overflow-y-auto whitespace-pre-wrap rounded-2xl bg-canvas p-3 text-xs leading-relaxed text-ink-secondary"
-          >
-            {{ updateInfo.changelog }}
-          </div>
-
-          <div class="mt-4 flex flex-col gap-2">
-            <a
-              v-if="updateInfo?.apkDownloadUrl"
-              :href="updateInfo.apkDownloadUrl"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="tactile flex w-full items-center justify-center gap-2 rounded-2xl bg-accent px-4 py-3 text-xs font-semibold text-accent-contrast shadow-organic-sm"
-              @click="openApkExternally"
-            >
-              <ExternalLink class="h-4 w-4 shrink-0" aria-hidden="true" />
-              <span>
+        <div
+          class="flex max-h-[80dvh] w-full max-w-sm flex-col overflow-hidden rounded-t-3xl bg-surface text-ink shadow-organic-lg sm:rounded-3xl"
+          @click.stop
+          @mousedown.stop
+          @touchstart.stop
+        >
+          <div class="flex shrink-0 items-start justify-between gap-3 border-b border-hairline px-5 py-4">
+            <div class="min-w-0">
+              <span
+                class="inline-block rounded-full px-2.5 py-0.5 text-[11px] font-bold tabular-nums"
+                :class="
+                  modalUpdateInfo.hasUpdate
+                    ? 'bg-accent-soft text-accent'
+                    : 'bg-surface-muted text-ink-secondary'
+                "
+              >
                 {{
-                  updateInfo.hasUpdate
-                    ? 'Скачать и установить обновление'
-                    : 'Скачать последний APK'
+                  modalUpdateInfo.hasUpdate
+                    ? `Доступна новая версия v${modalUpdateInfo.latestVersion}`
+                    : `Текущая версия актуальна (v${modalUpdateInfo.latestVersion})`
                 }}
               </span>
-            </a>
+              <h3 id="update-modal-title" class="mt-1.5 font-display text-lg font-extrabold text-ink">
+                {{ modalUpdateInfo.releaseName || 'Обновление Пухни' }}
+              </h3>
+            </div>
             <button
               type="button"
-              class="tactile w-full rounded-2xl border border-hairline bg-canvas py-2.5 text-xs font-semibold text-ink-secondary"
-              @click="updateDialogRef?.close()"
+              :disabled="downloadingUpdate"
+              aria-label="Закрыть"
+              class="tactile shrink-0 rounded-full bg-surface-muted p-1.5 text-ink-secondary disabled:opacity-40"
+              @click="closeUpdateDialog"
             >
-              Закрыть
+              <X class="h-4 w-4" aria-hidden="true" />
             </button>
+          </div>
+
+          <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-4 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
+            <div
+              v-if="modalUpdateInfo.changelog"
+              class="max-h-48 overflow-y-auto whitespace-pre-wrap rounded-2xl bg-canvas p-3 text-xs leading-relaxed text-ink-secondary"
+            >
+              {{ modalUpdateInfo.changelog }}
+            </div>
+
+            <div
+              v-if="downloadingUpdate"
+              class="mt-3 space-y-1.5 rounded-2xl bg-accent-soft/60 p-3"
+            >
+              <div class="flex items-center justify-between text-[11px] font-semibold text-accent tabular-nums">
+                <span>Скачивание обновления...</span>
+                <span>{{ downloadIndeterminate ? '...' : `${downloadProgress ?? 0}%` }}</span>
+              </div>
+              <div class="h-2 overflow-hidden rounded-full bg-surface">
+                <div
+                  class="h-full rounded-full bg-accent transition-[width] duration-150"
+                  :class="{ 'w-1/2 animate-pulse': downloadIndeterminate }"
+                  :style="!downloadIndeterminate ? { width: `${downloadProgress ?? 0}%` } : undefined"
+                />
+              </div>
+            </div>
+
+            <p v-if="downloadError" role="alert" class="mt-2.5 text-center text-xs text-danger">
+              {{ downloadError }}
+            </p>
+
+            <div class="mt-4 flex flex-col gap-2">
+              <button
+                v-if="modalUpdateInfo.apkDownloadUrl"
+                type="button"
+                :disabled="downloadingUpdate"
+                class="tactile flex w-full items-center justify-center gap-2 rounded-2xl bg-accent px-4 py-3 text-xs font-semibold text-accent-contrast shadow-organic-sm disabled:opacity-70 tabular-nums"
+                @click="downloadAndInstallUpdate(modalUpdateInfo)"
+              >
+                <Loader2 v-if="downloadingUpdate" class="h-4 w-4 shrink-0 animate-spin" aria-hidden="true" />
+                <ArrowUpCircle v-else class="h-4 w-4 shrink-0" aria-hidden="true" />
+                <span>
+                  {{
+                    downloadingUpdate
+                      ? downloadIndeterminate
+                        ? 'Скачивание обновления...'
+                        : `Скачивание обновления... ${downloadProgress ?? 0}%`
+                      : modalUpdateInfo.hasUpdate
+                        ? 'Обновить'
+                        : 'Переустановить APK'
+                  }}
+                </span>
+              </button>
+              <button
+                type="button"
+                :disabled="downloadingUpdate"
+                class="tactile w-full rounded-2xl border border-hairline bg-canvas py-2.5 text-xs font-semibold text-ink-secondary disabled:opacity-50"
+                @click="closeUpdateDialog"
+              >
+                Закрыть
+              </button>
+            </div>
           </div>
         </div>
       </div>
-    </dialog>
+    </Teleport>
 
     <!-- Плавающий тост -->
     <Transition name="fade">
