@@ -18,6 +18,7 @@ import {
 } from 'lucide-vue-next';
 import { useTheme, type ThemePreference } from '@/composables/useTheme';
 import { useAppUpdater } from '@/composables/useAppUpdater';
+import { useBackdropDismiss } from '@/composables/useBackdropDismiss';
 import { clearOfflineCache } from '@/lib/offlineCache';
 import {
   APP_VERSION,
@@ -134,6 +135,8 @@ function closeUpdateDialog() {
   appStore.removeBackHandler('app-update-modal');
   modalUpdateInfo.value = null;
 }
+
+const updateBackdrop = useBackdropDismiss(closeUpdateDialog);
 
 onUnmounted(() => {
   appStore.removeBackHandler('app-update-modal');
@@ -340,14 +343,16 @@ onUnmounted(() => {
         role="dialog"
         aria-modal="true"
         aria-labelledby="update-modal-title"
-        class="fixed inset-0 z-50 flex items-end justify-center bg-black/50 pt-[max(18dvh,calc(env(safe-area-inset-top)+3rem))] backdrop-blur-sm sm:items-center sm:px-4 sm:pb-6"
-        @click.self="closeUpdateDialog"
+        class="fixed inset-0 z-50 flex items-end justify-center bg-black/50 pt-[max(20dvh,calc(env(safe-area-inset-top)+3rem))] backdrop-blur-sm sm:items-center sm:px-4 sm:pb-6"
+        @pointerdown="updateBackdrop.onBackdropPointerDown"
+        @pointerup="updateBackdrop.onBackdropPointerUp"
+        @pointercancel="updateBackdrop.onBackdropPointerCancel"
       >
         <div
           class="flex max-h-[80dvh] w-full max-w-sm flex-col overflow-hidden rounded-t-3xl bg-surface text-ink shadow-organic-lg sm:rounded-3xl"
+          @pointerdown.stop
+          @pointerup.stop
           @click.stop
-          @mousedown.stop
-          @touchstart.stop
         >
           <div class="flex shrink-0 items-start justify-between gap-3 border-b border-hairline px-5 py-4">
             <div class="min-w-0">

@@ -21,6 +21,7 @@ import {
   type SuggestedIngredientInput,
   type TipTapDocument,
 } from '@cookbook/shared';
+import { useBackdropDismiss } from '@/composables/useBackdropDismiss';
 import { supabase } from '@/lib/supabase';
 import { useAppStore } from '@/stores/app';
 
@@ -123,6 +124,12 @@ function requestClose() {
   appStore.removeBackHandler(HANDLER_ID);
   emit('close');
 }
+
+const {
+  onBackdropPointerDown,
+  onBackdropPointerUp,
+  onBackdropPointerCancel,
+} = useBackdropDismiss(requestClose);
 
 watch(
   () => props.open,
@@ -394,8 +401,10 @@ async function handleSubmit() {
       role="dialog"
       aria-modal="true"
       aria-labelledby="suggest-modal-title"
-      class="fixed inset-0 z-50 flex items-end justify-center bg-black/50 pt-[max(18dvh,calc(env(safe-area-inset-top)+3rem))] backdrop-blur-sm sm:items-center sm:px-4 sm:pb-6"
-      @click.self="requestClose"
+      class="fixed inset-0 z-50 flex items-end justify-center bg-black/50 pt-[max(20dvh,calc(env(safe-area-inset-top)+3rem))] backdrop-blur-sm sm:items-center sm:px-4 sm:pb-6"
+      @pointerdown="onBackdropPointerDown"
+      @pointerup="onBackdropPointerUp"
+      @pointercancel="onBackdropPointerCancel"
     >
       <datalist id="mobile-ingredient-sections">
         <option v-for="sec in sectionSuggestions" :key="sec" :value="sec" />
@@ -403,9 +412,9 @@ async function handleSubmit() {
 
       <div
         class="flex max-h-[80dvh] w-full max-w-lg flex-col overflow-hidden rounded-t-3xl bg-surface text-ink shadow-organic-lg sm:rounded-3xl"
+        @pointerdown.stop
+        @pointerup.stop
         @click.stop
-        @mousedown.stop
-        @touchstart.stop
       >
         <!-- Зафиксированная сверху шапка модалки -->
         <div class="flex shrink-0 items-center justify-between gap-3 border-b border-hairline px-5 py-4">

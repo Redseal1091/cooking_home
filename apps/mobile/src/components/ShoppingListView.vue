@@ -19,6 +19,7 @@ import {
   X,
 } from 'lucide-vue-next';
 import { formatAmount, INGREDIENT_UNITS, type ShoppingListItem } from '@cookbook/shared';
+import { useBackdropDismiss } from '@/composables/useBackdropDismiss';
 import { useAppStore } from '@/stores/app';
 import { useShoppingListStore } from '@/stores/shoppingList';
 import { useMobileRecipesStore } from '@/stores/recipes';
@@ -61,6 +62,8 @@ function closeClearAllModal() {
   appStore.removeBackHandler('clear-all-shopping-list');
   clearAllModalOpen.value = false;
 }
+
+const clearAllBackdrop = useBackdropDismiss(closeClearAllModal);
 
 function confirmClearAll() {
   void shoppingStore.clearAll();
@@ -112,6 +115,8 @@ function closeEditModal() {
   editingItem.value = null;
 }
 
+const editBackdrop = useBackdropDismiss(closeEditModal);
+
 function saveEditModal() {
   if (!editingItem.value) return;
   const parsedAmount = Number.parseFloat(editAmount.value.replace(',', '.'));
@@ -136,6 +141,8 @@ function closeShareModal() {
   appStore.removeBackHandler('share-shopping-list');
   shareModalOpen.value = false;
 }
+
+const shareBackdrop = useBackdropDismiss(closeShareModal);
 
 onUnmounted(() => {
   appStore.removeBackHandler('clear-all-shopping-list');
@@ -436,14 +443,16 @@ async function handleCopyText() {
         role="dialog"
         aria-modal="true"
         aria-labelledby="edit-item-title"
-        class="fixed inset-0 z-50 flex items-end justify-center bg-black/50 pt-[max(18dvh,calc(env(safe-area-inset-top)+3rem))] backdrop-blur-sm sm:items-center sm:px-4 sm:pb-6"
-        @click.self="closeEditModal"
+        class="fixed inset-0 z-50 flex items-end justify-center bg-black/50 pt-[max(20dvh,calc(env(safe-area-inset-top)+3rem))] backdrop-blur-sm sm:items-center sm:px-4 sm:pb-6"
+        @pointerdown="editBackdrop.onBackdropPointerDown"
+        @pointerup="editBackdrop.onBackdropPointerUp"
+        @pointercancel="editBackdrop.onBackdropPointerCancel"
       >
         <div
           class="flex max-h-[80dvh] w-full max-w-sm flex-col overflow-hidden rounded-t-3xl bg-surface text-ink shadow-organic-lg sm:rounded-3xl"
+          @pointerdown.stop
+          @pointerup.stop
           @click.stop
-          @mousedown.stop
-          @touchstart.stop
         >
           <div class="flex shrink-0 items-center justify-between gap-2 border-b border-hairline px-5 py-4">
             <h3 id="edit-item-title" class="font-display text-base font-bold text-ink">
@@ -526,14 +535,16 @@ async function handleCopyText() {
         role="dialog"
         aria-modal="true"
         aria-labelledby="clear-all-title"
-        class="fixed inset-0 z-50 flex items-end justify-center bg-black/50 pt-[max(18dvh,calc(env(safe-area-inset-top)+3rem))] backdrop-blur-sm sm:items-center sm:px-4 sm:pb-6"
-        @click.self="closeClearAllModal"
+        class="fixed inset-0 z-50 flex items-end justify-center bg-black/50 pt-[max(20dvh,calc(env(safe-area-inset-top)+3rem))] backdrop-blur-sm sm:items-center sm:px-4 sm:pb-6"
+        @pointerdown="clearAllBackdrop.onBackdropPointerDown"
+        @pointerup="clearAllBackdrop.onBackdropPointerUp"
+        @pointercancel="clearAllBackdrop.onBackdropPointerCancel"
       >
         <div
           class="flex max-h-[80dvh] w-full max-w-sm flex-col overflow-hidden rounded-t-3xl bg-surface text-ink shadow-organic-lg sm:rounded-3xl"
+          @pointerdown.stop
+          @pointerup.stop
           @click.stop
-          @mousedown.stop
-          @touchstart.stop
         >
           <div class="flex shrink-0 items-center justify-between gap-3 border-b border-hairline px-5 py-4">
             <div class="flex min-w-0 items-center gap-2.5">
@@ -587,14 +598,16 @@ async function handleCopyText() {
         role="dialog"
         aria-modal="true"
         aria-labelledby="share-list-title"
-        class="fixed inset-0 z-50 flex items-end justify-center bg-black/50 pt-[max(18dvh,calc(env(safe-area-inset-top)+3rem))] backdrop-blur-sm sm:items-center sm:px-4 sm:pb-6"
-        @click.self="closeShareModal"
+        class="fixed inset-0 z-50 flex items-end justify-center bg-black/50 pt-[max(20dvh,calc(env(safe-area-inset-top)+3rem))] backdrop-blur-sm sm:items-center sm:px-4 sm:pb-6"
+        @pointerdown="shareBackdrop.onBackdropPointerDown"
+        @pointerup="shareBackdrop.onBackdropPointerUp"
+        @pointercancel="shareBackdrop.onBackdropPointerCancel"
       >
         <div
           class="flex max-h-[80dvh] w-full max-w-sm flex-col overflow-hidden rounded-t-3xl bg-surface text-ink shadow-organic-lg sm:rounded-3xl"
+          @pointerdown.stop
+          @pointerup.stop
           @click.stop
-          @mousedown.stop
-          @touchstart.stop
         >
           <div class="flex shrink-0 items-center justify-between gap-2 border-b border-hairline px-5 py-4">
             <h3 id="share-list-title" class="font-display text-base font-bold text-ink">
