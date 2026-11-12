@@ -1,6 +1,12 @@
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import { defineStore } from 'pinia';
-import type { Recipe, RecipeWithIngredients, TipTapDocument } from '@cookbook/shared';
+import type { RealtimeChannel } from '@supabase/supabase-js';
+import type {
+  Recipe,
+  RecipeSuggestion,
+  RecipeWithIngredients,
+  TipTapDocument,
+} from '@cookbook/shared';
 import { supabase } from '@/lib/supabase';
 
 export interface IngredientDraft {
@@ -9,6 +15,7 @@ export interface IngredientDraft {
   amount: number | null;
   unit: string;
   is_scalable: boolean;
+  section_name: string | null;
 }
 
 export interface RecipeDraft {
@@ -60,6 +67,7 @@ export function createEmptyRecipeDraft(): RecipeDraft {
         amount: null,
         unit: 'г',
         is_scalable: true,
+        section_name: null,
       },
     ],
   };
@@ -67,11 +75,18 @@ export function createEmptyRecipeDraft(): RecipeDraft {
 
 export const useRecipesStore = defineStore('recipes', () => {
   const recipes = ref<Recipe[]>([]);
+  const suggestions = ref<RecipeSuggestion[]>([]);
   const loadingList = ref(false);
+  const loadingSuggestions = ref(false);
   const loadingDetail = ref(false);
   const saving = ref(false);
   const deleting = ref(false);
   const error = ref<string | null>(null);
+  let suggestionsChannel: RealtimeChannel | null = null;
+
+  const pendingSuggestionsCount = computed(
+    () => suggestions.value.filter((s) => s.status === 'pending').length,
+  );
 
   async function fetchRecipes() {
     loadingList.value = true;
@@ -182,6 +197,7 @@ export const useRecipesStore = defineStore('recipes', () => {
         amount: ing.amount !== null && !Number.isNaN(ing.amount) ? Number(ing.amount) : null,
         unit: ing.unit.trim() || 'г',
         is_scalable: ing.is_scalable,
+        section_name: ing.section_name?.trim() || null,
         order_index: index,
       }));
 
@@ -253,9 +269,114 @@ export const useRecipesStore = defineStore('recipes', () => {
     }
   }
 
+  async function fetchSuggestions() {
+    loadingSuggestions.value = true;
+    try {
+      const { data, error: dbErr } = await supabase
+        .from('recipe_suggestions')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (dbErr) throw dbErr;
+      suggestions.value = (data ?? []) as RecipeSuggestion[];
+    } catch (err) {
+      error.value =
+        err instanceof Error ? err.message : 'Не удалось загрузить предложенные рецепты';
+    } finally {
+      loadingSuggestions.value = false;
+    }
+  }
+
+  function subscribeSuggestionsRealtime() {
+    if (suggestionsChannel) return;
+    suggestionsChannel = supabase
+      .channel('admin_recipe_suggestions_rt')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'recipe_suggestions' },
+        () => {
+          void fetchSuggestions();
+        },
+      )
+      .subscribe();
+  }
+
+  function unsubscribeSuggestionsRealtime() {
+    if (suggestionsChannel) {
+      void supabase.removeChannel(suggestionsChannel);
+      suggestionsChannel = null;
+    }
+  }
+
+  async function publishSuggestion(
+    suggestionId: string,
+    draft: RecipeDraft,
+  ): Promise<Recipe | null> {
+    saving.value = true;
+    error.value = null;
+    try {
+      const savedRecipe = await saveRecipeInternal({ ...draft, id: undefined });
+      const { error: updErr } = await supabase
+        .from('recipe_suggestions')
+        .update({
+          status: 'published',
+          published_recipe_id: savedRecipe.id,
+        })
+        .eq('id', suggestionId);
+
+      if (updErr) throw updErr;
+
+      await Promise.all([fetchRecipes(), fetchSuggestions()]);
+      return savedRecipe;
+    } catch (err) {
+      error.value =
+        err instanceof Error ? err.message : 'Не удалось опубликовать предложенный рецепт';
+      return null;
+    } finally {
+      saving.value = false;
+    }
+  }
+
+  async function rejectSuggestion(suggestionId: string): Promise<boolean> {
+    error.value = null;
+    try {
+      const { error: updErr } = await supabase
+        .from('recipe_suggestions')
+        .update({ status: 'rejected' })
+        .eq('id', suggestionId);
+
+      if (updErr) throw updErr;
+      await fetchSuggestions();
+      return true;
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : 'Не удалось отклонить заявку';
+      return false;
+    }
+  }
+
+  async function deleteSuggestion(suggestionId: string): Promise<boolean> {
+    error.value = null;
+    try {
+      const { error: delErr } = await supabase
+        .from('recipe_suggestions')
+        .delete()
+        .eq('id', suggestionId);
+
+      if (delErr) throw delErr;
+      suggestions.value = suggestions.value.filter((s) => s.id !== suggestionId);
+      return true;
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : 'Не удалось удалить заявку';
+      return false;
+    }
+  }
+
   return {
     recipes,
+    suggestions,
+    pendingSuggestionsCount,
     loadingList,
+    loadingSuggestions,
     loadingDetail,
     saving,
     deleting,
@@ -265,5 +386,11 @@ export const useRecipesStore = defineStore('recipes', () => {
     saveRecipe,
     importRecipesBatch,
     deleteRecipe,
+    fetchSuggestions,
+    subscribeSuggestionsRealtime,
+    unsubscribeSuggestionsRealtime,
+    publishSuggestion,
+    rejectSuggestion,
+    deleteSuggestion,
   };
 });

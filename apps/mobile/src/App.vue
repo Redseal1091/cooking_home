@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from 'vue';
+import { App as CapApp } from '@capacitor/app';
+import type { PluginListenerHandle } from '@capacitor/core';
 import type { RecipeWithIngredients } from '@cookbook/shared';
 import { useTheme } from '@/composables/useTheme';
 import { useAppStore } from '@/stores/app';
@@ -21,11 +23,12 @@ const shoppingStore = useShoppingListStore();
 
 const activeTab = ref<MobileTab>('catalog');
 const selectedRecipe = ref<RecipeWithIngredients | null>(null);
+let backButtonHandle: PluginListenerHandle | null = null;
 
 function handleNetworkChange() {
   recipesStore.updateOnlineStatus();
   if (navigator.onLine) {
-    void shoppingStore.fetchItems();
+    void shoppingStore.flushOfflineBatchQueue().then(() => shoppingStore.fetchItems());
     shoppingStore.subscribeRealtime();
   }
 }
@@ -42,6 +45,33 @@ function closeRecipe() {
 onMounted(async () => {
   window.addEventListener('online', handleNetworkChange);
   window.addEventListener('offline', handleNetworkChange);
+
+  try {
+    backButtonHandle = await CapApp.addListener('backButton', () => {
+      // 1. Закрываем верхнее открытое модальное окно или панель фильтра
+      if (appStore.closeTopModal()) {
+        return;
+      }
+
+      // 2. Если открыт экран рецепта — возвращаемся в каталог
+      if (selectedRecipe.value) {
+        closeRecipe();
+        return;
+      }
+
+      // 3. Если открыты Покупки или Настройки — переходим в Каталог
+      if (activeTab.value !== 'catalog') {
+        activeTab.value = 'catalog';
+        return;
+      }
+
+      // 4. На корневом экране каталога сворачиваем приложение
+      void CapApp.minimizeApp();
+    });
+  } catch {
+    // В обычном веб-браузере нативный listener не требуется
+  }
+
   await appStore.init();
   await Promise.all([
     recipesStore.loadInitial(),
@@ -53,6 +83,7 @@ onUnmounted(() => {
   window.removeEventListener('online', handleNetworkChange);
   window.removeEventListener('offline', handleNetworkChange);
   shoppingStore.unsubscribeRealtime();
+  void backButtonHandle?.remove();
 });
 </script>
 
@@ -67,7 +98,7 @@ onUnmounted(() => {
       @start="appStore.completeOnboarding()"
     />
 
-    <div v-else class="mx-auto min-h-dvh max-w-lg">
+    <div v-else class="mx-auto min-h-dvh w-full max-w-lg overflow-x-hidden">
       <Transition name="slide" mode="out-in">
         <RecipeDetailView
           v-if="selectedRecipe"

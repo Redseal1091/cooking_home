@@ -1,6 +1,6 @@
 {
   "name": "@cookbook/mobile",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -14,9 +14,11 @@
   "dependencies": {
     "@capacitor-community/keep-awake": "^7.1.0",
     "@capacitor/android": "^7.6.0",
+    "@capacitor/app": "^7.1.2",
     "@capacitor/core": "^7.6.0",
     "@capacitor/local-notifications": "^7.0.0",
     "@capacitor/preferences": "^7.0.0",
+    "@capacitor/share": "^7.0.4",
     "@cookbook/shared": "*",
     "@supabase/supabase-js": "^2.49.1",
     "lucide-vue-next": "^0.475.0",

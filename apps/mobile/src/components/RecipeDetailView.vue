@@ -21,6 +21,7 @@ import {
   calculateScaledTotalNutrition,
   formatAmount,
   getScaleFactorByServings,
+  groupScaledIngredientsBySection,
   parseTimeTokens,
   scaleIngredients,
   type RecipeWithIngredients,
@@ -71,6 +72,10 @@ const scaledIngredients = computed(() =>
   scaleIngredients(props.recipe.ingredients, scaleFactor.value),
 );
 
+const groupedIngredients = computed(() =>
+  groupScaledIngredientsBySection(scaledIngredients.value),
+);
+
 const nutritionPerServing = computed(() => calculateNutritionPerServing(props.recipe));
 const nutritionScaledTotal = computed(() =>
   calculateScaledTotalNutrition(props.recipe, scaleFactor.value),
@@ -106,19 +111,17 @@ function toggleStepCheck(key: string) {
   checkedSteps.value = next;
 }
 
-async function handleAddAllToShopping() {
-  addingToShopping.value = true;
-  try {
-    const toAdd = scaledIngredients.value.filter((ing) => !checkedIngredients.value.has(ing.id));
-    const listToUse = toAdd.length > 0 ? toAdd : scaledIngredients.value;
-    const count = await shoppingStore.addIngredientsFromRecipe(listToUse, props.recipe.title);
-    shoppingFeedback.value = `Добавлено в список покупок: ${count}`;
-    setTimeout(() => {
-      shoppingFeedback.value = null;
-    }, 3000);
-  } finally {
-    addingToShopping.value = false;
-  }
+let shoppingFeedbackTimer: ReturnType<typeof setTimeout> | null = null;
+
+function handleAddAllToShopping() {
+  const toAdd = scaledIngredients.value.filter((ing) => !checkedIngredients.value.has(ing.id));
+  const listToUse = toAdd.length > 0 ? toAdd : scaledIngredients.value;
+  const count = shoppingStore.addIngredientsFromRecipe(listToUse, props.recipe.title);
+  shoppingFeedback.value = `Добавлено в список покупок: ${count}`;
+  if (shoppingFeedbackTimer) clearTimeout(shoppingFeedbackTimer);
+  shoppingFeedbackTimer = setTimeout(() => {
+    shoppingFeedback.value = null;
+  }, 3000);
 }
 
 async function handleSaveNote() {
@@ -184,7 +187,7 @@ function formatNoteDate(iso: string): string {
 </script>
 
 <template>
-  <div class="pb-32">
+  <div class="overflow-x-hidden pb-32">
     <!-- Медиа-шапка -->
     <div class="relative aspect-[4/3] max-h-[380px] w-full bg-surface-muted">
       <video
@@ -243,16 +246,20 @@ function formatNoteDate(iso: string): string {
         <span>Смотреть видео</span>
       </button>
 
-      <div v-if="!showVideoPlayer" class="absolute bottom-6 left-5 right-28">
-        <h1 class="font-display text-2xl font-extrabold leading-tight text-white drop-shadow-sm">
+      <div
+        v-if="!showVideoPlayer"
+        class="pointer-events-none absolute bottom-6 left-5"
+        :class="recipe.video_preview_url ? 'right-36' : 'right-5'"
+      >
+        <h1 class="break-words font-display text-2xl font-extrabold leading-tight text-white drop-shadow-sm">
           {{ recipe.title }}
         </h1>
       </div>
     </div>
 
     <!-- Основная карточка контента с плавным наездом на обложку -->
-    <div class="relative -mt-4 space-y-5 rounded-t-4xl bg-canvas px-5 pt-6">
-      <p v-if="recipe.description" class="text-sm leading-relaxed text-ink-secondary">
+    <div class="relative -mt-4 space-y-5 rounded-t-4xl bg-canvas px-4 pt-6 sm:px-5">
+      <p v-if="recipe.description" class="break-words text-sm leading-relaxed text-ink-secondary">
         {{ recipe.description }}
       </p>
 
@@ -385,57 +392,68 @@ function formatNoteDate(iso: string): string {
           </button>
         </div>
 
-        <!-- Список ингредиентов с чекбоксами -->
-        <ul class="mt-4 divide-y divide-hairline">
-          <li
-            v-for="ing in scaledIngredients"
-            :key="ing.id"
-            class="flex items-center justify-between gap-3 py-2.5"
-          >
-            <button
-              type="button"
-              class="flex min-w-0 flex-1 items-center gap-3 text-left"
-              @click="toggleIngredientCheck(ing.id)"
+        <!-- Список ингредиентов с секциями и чекбоксами -->
+        <div class="mt-4 space-y-4">
+          <div v-for="(group, gIdx) in groupedIngredients" :key="group.sectionName ?? `g-${gIdx}`">
+            <h3
+              v-if="group.sectionName"
+              class="mb-1.5 inline-flex items-center rounded-full bg-accent-soft px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-accent"
             >
-              <span
-                class="flex h-5 w-5 shrink-0 items-center justify-center rounded-lg border transition-colors"
-                :class="
-                  checkedIngredients.has(ing.id)
-                    ? 'border-accent bg-accent text-white'
-                    : 'border-hairline bg-canvas'
-                "
-              >
-                <Check v-if="checkedIngredients.has(ing.id)" class="h-3.5 w-3.5" aria-hidden="true" />
-              </span>
-              <span
-                class="truncate text-sm transition-opacity"
-                :class="
-                  checkedIngredients.has(ing.id)
-                    ? 'text-ink-tertiary line-through opacity-70'
-                    : 'text-ink'
-                "
-              >
-                {{ ing.name }}
-              </span>
-            </button>
+              {{ group.sectionName }}
+            </h3>
 
-            <button
-              v-if="ing.is_scalable && ing.amount !== null"
-              type="button"
-              title="Нажмите для пересчёта от остатков"
-              class="tactile shrink-0 rounded-full bg-accent-soft px-3 py-1 text-xs font-bold text-accent tabular-nums hover:bg-accent hover:text-accent-contrast"
-              @click="reverseTarget = ing"
-            >
-              {{ ing.formattedAmount }} {{ ing.unit }}
-            </button>
-            <span
-              v-else
-              class="shrink-0 px-2 text-xs font-medium text-ink-secondary tabular-nums"
-            >
-              {{ ing.formattedAmount }} {{ ing.unit }}
-            </span>
-          </li>
-        </ul>
+            <ul class="divide-y divide-hairline">
+              <li
+                v-for="ing in group.items"
+                :key="ing.id"
+                class="flex items-center justify-between gap-2.5 py-2.5"
+              >
+                <button
+                  type="button"
+                  class="flex min-w-0 flex-1 items-center gap-3 text-left"
+                  @click="toggleIngredientCheck(ing.id)"
+                >
+                  <span
+                    class="flex h-5 w-5 shrink-0 items-center justify-center rounded-lg border transition-colors"
+                    :class="
+                      checkedIngredients.has(ing.id)
+                        ? 'border-accent bg-accent text-white'
+                        : 'border-hairline bg-canvas'
+                    "
+                  >
+                    <Check v-if="checkedIngredients.has(ing.id)" class="h-3.5 w-3.5" aria-hidden="true" />
+                  </span>
+                  <span
+                    class="min-w-0 flex-1 break-words text-sm transition-opacity"
+                    :class="
+                      checkedIngredients.has(ing.id)
+                        ? 'text-ink-tertiary line-through opacity-70'
+                        : 'text-ink'
+                    "
+                  >
+                    {{ ing.name }}
+                  </span>
+                </button>
+
+                <button
+                  v-if="ing.is_scalable && ing.amount !== null"
+                  type="button"
+                  title="Нажмите для пересчёта от остатков"
+                  class="tactile shrink-0 rounded-full bg-accent-soft px-3 py-1 text-xs font-bold text-accent tabular-nums hover:bg-accent hover:text-accent-contrast"
+                  @click="reverseTarget = ing"
+                >
+                  {{ ing.formattedAmount }} {{ ing.unit }}
+                </button>
+                <span
+                  v-else
+                  class="shrink-0 px-2 text-xs font-medium text-ink-secondary tabular-nums"
+                >
+                  {{ ing.formattedAmount }} {{ ing.unit }}
+                </span>
+              </li>
+            </ul>
+          </div>
+        </div>
 
         <!-- Кнопка добавить в семейный список покупок -->
         <button
@@ -491,7 +509,7 @@ function formatNoteDate(iso: string): string {
             </button>
 
             <p
-              class="flex-1 text-sm leading-relaxed transition-opacity"
+              class="min-w-0 flex-1 break-words text-sm leading-relaxed transition-opacity"
               :class="checkedSteps.has(`p-${idx}`) ? 'text-ink-tertiary line-through opacity-75' : 'text-ink'"
             >
               <template v-for="(part, pIdx) in tokenizeTimers(extractText(node))" :key="pIdx">
@@ -533,7 +551,7 @@ function formatNoteDate(iso: string): string {
               </button>
 
               <span
-                class="flex-1 text-sm leading-relaxed"
+                class="min-w-0 flex-1 break-words text-sm leading-relaxed"
                 :class="
                   checkedSteps.has(`ol-${idx}-${lIdx}`)
                     ? 'text-ink-tertiary line-through opacity-75'
@@ -615,18 +633,18 @@ function formatNoteDate(iso: string): string {
           Запишите советы на будущее: температуру духовки, количество сахара или любимую подачу.
         </p>
 
-        <form class="mt-3 flex gap-2" @submit.prevent="handleSaveNote">
+        <form class="mt-3 flex items-center gap-2" @submit.prevent="handleSaveNote">
           <input
             v-model="newNoteText"
             type="text"
             placeholder="Добавить заметку..."
-            class="flex-1 rounded-2xl border border-hairline bg-canvas px-3.5 py-2.5 text-sm text-ink placeholder:text-ink-tertiary focus:border-accent focus:outline-none"
+            class="min-w-0 flex-1 rounded-2xl border border-hairline bg-canvas px-3.5 py-2.5 text-sm text-ink placeholder:text-ink-tertiary focus:border-accent focus:outline-none"
           />
           <button
             type="submit"
             :disabled="savingNote || !newNoteText.trim()"
             aria-label="Сохранить заметку"
-            class="tactile inline-flex items-center justify-center rounded-2xl bg-accent px-4 py-2.5 text-accent-contrast disabled:opacity-50"
+            class="tactile inline-flex shrink-0 items-center justify-center rounded-2xl bg-accent px-4 py-2.5 text-accent-contrast disabled:opacity-50"
           >
             <MessageSquarePlus class="h-4 w-4" aria-hidden="true" />
           </button>

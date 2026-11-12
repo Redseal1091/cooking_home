@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue';
 import { Scale, X } from 'lucide-vue-next';
 import { formatAmount, getScaleFactorByIngredient, type ScaledIngredient } from '@cookbook/shared';
+import { useAppStore } from '@/stores/app';
 
 const props = defineProps<{
   open: boolean;
@@ -13,6 +14,7 @@ const emit = defineEmits<{
   apply: [newFactor: number];
 }>();
 
+const appStore = useAppStore();
 const dialogRef = ref<HTMLDialogElement | null>(null);
 const availableAmount = ref<string>('');
 
@@ -24,13 +26,20 @@ watch(
     if (isOpen && props.ingredient) {
       availableAmount.value = String(props.ingredient.scaledAmount ?? props.ingredient.amount ?? '');
       if (!dialog.open) dialog.showModal();
-    } else if (!isOpen && dialog.open) {
-      dialog.close();
+      appStore.pushBackHandler('reverse-calc-modal', () => {
+        dialogRef.value?.close();
+      });
+    } else {
+      appStore.removeBackHandler('reverse-calc-modal');
+      if (!isOpen && dialog.open) {
+        dialog.close();
+      }
     }
   },
 );
 
 function handleClose() {
+  appStore.removeBackHandler('reverse-calc-modal');
   if (dialogRef.value) dialogRef.value.returnValue = '';
   emit('close');
 }
@@ -60,15 +69,15 @@ function handleSubmit() {
     @close="handleClose"
   >
     <div class="flex items-start justify-between gap-3">
-      <div class="flex items-center gap-2.5">
-        <div class="flex h-10 w-10 items-center justify-center rounded-2xl bg-accent-soft text-accent">
+      <div class="flex min-w-0 flex-1 items-center gap-2.5">
+        <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-accent-soft text-accent">
           <Scale class="h-5 w-5" aria-hidden="true" />
         </div>
-        <div>
+        <div class="min-w-0 flex-1">
           <h3 id="reverse-calc-title" class="font-display text-base font-bold text-ink">
             Пересчёт от остатков
           </h3>
-          <p class="text-xs text-ink-secondary">
+          <p class="truncate text-xs text-ink-secondary">
             {{ ingredient?.name }}
           </p>
         </div>
@@ -77,7 +86,7 @@ function handleSubmit() {
       <button
         type="button"
         aria-label="Закрыть"
-        class="tactile rounded-full bg-surface-muted p-1.5 text-ink-secondary"
+        class="tactile shrink-0 rounded-full bg-surface-muted p-1.5 text-ink-secondary"
         @click="dialogRef?.close()"
       >
         <X class="h-4 w-4" aria-hidden="true" />

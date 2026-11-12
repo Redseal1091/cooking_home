@@ -1,5 +1,6 @@
 import type {
   Ingredient,
+  IngredientSectionGroup,
   NutritionPerServing,
   ParsedTimeToken,
   Recipe,
@@ -105,6 +106,32 @@ export function scaleIngredients(
         formattedAmount: formatAmount(rounded),
       };
     });
+}
+
+/**
+ * Группирует масштабированные ингредиенты по секциям (`section_name`),
+ * сохраняя порядок первого появления каждой секции.
+ */
+export function groupScaledIngredientsBySection(
+  items: ScaledIngredient[],
+): IngredientSectionGroup[] {
+  const groups = new Map<string, IngredientSectionGroup>();
+
+  for (const item of items) {
+    const clean = item.section_name?.trim() || null;
+    const key = clean ?? '__default__';
+    const existing = groups.get(key);
+    if (existing) {
+      existing.items.push(item);
+    } else {
+      groups.set(key, {
+        sectionName: clean,
+        items: [item],
+      });
+    }
+  }
+
+  return Array.from(groups.values());
 }
 
 /**

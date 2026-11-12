@@ -36,6 +36,15 @@ export const INGREDIENT_UNITS: readonly string[] = [
   'по вкусу',
 ] as const;
 
+export const DEFAULT_INGREDIENT_SECTIONS: readonly string[] = [
+  'Для теста',
+  'Для начинки',
+  'Для соуса',
+  'Для крема',
+  'Для маринада',
+  'Для подачи',
+] as const;
+
 export interface TipTapMark {
   type: string;
   attrs?: Record<string, unknown>;
@@ -82,6 +91,43 @@ export interface Ingredient {
   unit: string;
   is_scalable: boolean;
   order_index: number;
+  section_name?: string | null;
+}
+
+export type SuggestionStatus = 'pending' | 'published' | 'rejected';
+export type SuggestionMode = 'quick' | 'full';
+
+export interface SuggestedIngredientInput {
+  name: string;
+  amount: number | null;
+  unit: string;
+  is_scalable: boolean;
+  section_name?: string | null;
+}
+
+export interface RecipeSuggestion {
+  id: string;
+  status: SuggestionStatus;
+  mode: SuggestionMode;
+  title: string;
+  notes: string | null;
+  source_url: string | null;
+  author_name: string | null;
+  category: RecipeCategory;
+  cover_url: string | null;
+  prep_time_min: number;
+  cook_time_min: number;
+  base_servings: number;
+  total_weight_g: number | null;
+  calories: number | null;
+  proteins: number | null;
+  fats: number | null;
+  carbs: number | null;
+  ingredients: SuggestedIngredientInput[];
+  content_blocks: TipTapDocument;
+  published_recipe_id: string | null;
+  created_at: string;
+  updated_at?: string;
 }
 
 export interface ShoppingListItem {
@@ -112,6 +158,11 @@ export interface RecipeFull extends RecipeWithIngredients {
 export interface ScaledIngredient extends Ingredient {
   scaledAmount: number | null;
   formattedAmount: string;
+}
+
+export interface IngredientSectionGroup {
+  sectionName: string | null;
+  items: ScaledIngredient[];
 }
 
 export interface NutritionPerServing {

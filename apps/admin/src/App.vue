@@ -1,14 +1,18 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import {
+  Ban,
   CheckCircle2,
+  ExternalLink,
+  Inbox,
   LogOut,
   Save,
+  Send,
   Smartphone,
   Sparkles,
   Trash2,
 } from 'lucide-vue-next';
-import { DEFAULT_RECIPE_CATEGORIES } from '@cookbook/shared';
+import { DEFAULT_RECIPE_CATEGORIES, type RecipeSuggestion } from '@cookbook/shared';
 import { useAuthStore } from '@/stores/auth';
 import {
   createEmptyRecipeDraft,
@@ -30,6 +34,7 @@ const auth = useAuthStore();
 const recipesStore = useRecipesStore();
 
 const draft = ref<RecipeDraft>(createEmptyRecipeDraft());
+const activeSuggestion = ref<RecipeSuggestion | null>(null);
 const previewOpen = ref(false);
 const deleteDialogOpen = ref(false);
 const importOpen = ref(false);
@@ -62,13 +67,24 @@ watch(
   () => auth.isAuthenticated,
   async (loggedIn) => {
     if (loggedIn) {
-      await recipesStore.fetchRecipes();
+      await Promise.all([
+        recipesStore.fetchRecipes(),
+        recipesStore.fetchSuggestions(),
+      ]);
+      recipesStore.subscribeSuggestionsRealtime();
+    } else {
+      recipesStore.unsubscribeSuggestionsRealtime();
     }
   },
   { immediate: true },
 );
 
+onUnmounted(() => {
+  recipesStore.unsubscribeSuggestionsRealtime();
+});
+
 function startNewRecipe() {
+  activeSuggestion.value = null;
   draft.value = createEmptyRecipeDraft();
 }
 
@@ -76,6 +92,7 @@ async function selectRecipe(id: string) {
   const full = await recipesStore.fetchRecipeById(id);
   if (!full) return;
 
+  activeSuggestion.value = null;
   draft.value = {
     id: full.id,
     title: full.title,
@@ -100,6 +117,7 @@ async function selectRecipe(id: string) {
             amount: ing.amount,
             unit: ing.unit,
             is_scalable: ing.is_scalable,
+            section_name: ing.section_name ?? null,
           }))
         : [
             {
@@ -108,9 +126,108 @@ async function selectRecipe(id: string) {
               amount: null,
               unit: 'г',
               is_scalable: true,
+              section_name: null,
             },
           ],
   };
+}
+
+function selectSuggestion(sug: RecipeSuggestion) {
+  activeSuggestion.value = sug;
+
+  const hasContentBlocks =
+    sug.content_blocks &&
+    Array.isArray(sug.content_blocks.content) &&
+    sug.content_blocks.content.some(
+      (n) => (n.content && n.content.length > 0) || Boolean(n.text),
+    );
+
+  const fallbackBlocks = sug.notes?.trim()
+    ? {
+        type: 'doc' as const,
+        content: sug.notes
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .filter(Boolean)
+          .map((line) => ({
+            type: 'paragraph',
+            content: [{ type: 'text', text: line }],
+          })),
+      }
+    : { type: 'doc' as const, content: [{ type: 'paragraph' }] };
+
+  draft.value = {
+    id: undefined,
+    title: sug.title,
+    description: sug.notes?.trim() ?? '',
+    category: sug.category || 'Основные блюда',
+    cover_url: sug.cover_url ?? null,
+    video_preview_url: null,
+    prep_time_min: sug.prep_time_min ?? 15,
+    cook_time_min: sug.cook_time_min ?? 30,
+    base_servings: sug.base_servings || 4,
+    total_weight_g: sug.total_weight_g ?? null,
+    calories: sug.calories ?? null,
+    proteins: sug.proteins ?? null,
+    fats: sug.fats ?? null,
+    carbs: sug.carbs ?? null,
+    content_blocks: hasContentBlocks ? sug.content_blocks : fallbackBlocks,
+    ingredients:
+      Array.isArray(sug.ingredients) && sug.ingredients.length > 0
+        ? sug.ingredients.map((ing) => ({
+            localId: crypto.randomUUID(),
+            name: ing.name,
+            amount: ing.amount,
+            unit: ing.unit || 'г',
+            is_scalable: ing.is_scalable ?? true,
+            section_name: ing.section_name ?? null,
+          }))
+        : [
+            {
+              localId: crypto.randomUUID(),
+              name: '',
+              amount: null,
+              unit: 'г',
+              is_scalable: true,
+              section_name: null,
+            },
+          ],
+  };
+}
+
+async function handlePublishSuggestion() {
+  if (!activeSuggestion.value) return;
+  if (!draft.value.title.trim()) {
+    recipesStore.error = 'Укажите название рецепта перед публикацией.';
+    return;
+  }
+
+  const saved = await recipesStore.publishSuggestion(activeSuggestion.value.id, draft.value);
+  if (saved) {
+    activeSuggestion.value = null;
+    await selectRecipe(saved.id);
+    showToast('Предложенный рецепт опубликован в семейную книгу!');
+  }
+}
+
+async function handleRejectSuggestion() {
+  if (!activeSuggestion.value) return;
+  const ok = await recipesStore.rejectSuggestion(activeSuggestion.value.id);
+  if (ok) {
+    activeSuggestion.value = null;
+    startNewRecipe();
+    showToast('Заявка отклонена');
+  }
+}
+
+async function handleDeleteSuggestion() {
+  if (!activeSuggestion.value) return;
+  const ok = await recipesStore.deleteSuggestion(activeSuggestion.value.id);
+  if (ok) {
+    activeSuggestion.value = null;
+    startNewRecipe();
+    showToast('Заявка удалена');
+  }
 }
 
 async function handleSave() {
@@ -152,6 +269,7 @@ function handleFillSingleImport(imported: RecipeDraft) {
               amount: null,
               unit: 'г',
               is_scalable: true,
+              section_name: null,
             },
           ],
   };
@@ -210,26 +328,106 @@ function handleBatchImported(count: number) {
 
       <!-- Основной контейнер -->
       <main class="mx-auto mt-6 grid max-w-7xl grid-cols-1 gap-6 px-4 sm:px-6 lg:grid-cols-12">
-        <!-- Левый сайдбар со списком рецептов -->
+        <!-- Левый сайдбар со списком рецептов и заявок -->
         <div class="lg:col-span-4 xl:col-span-3 lg:sticky lg:top-24 lg:h-[calc(100dvh-7.5rem)]">
           <RecipeSidebar
             :recipes="recipesStore.recipes"
+            :suggestions="recipesStore.suggestions"
+            :pending-suggestions-count="recipesStore.pendingSuggestionsCount"
             :selected-id="draft.id"
+            :selected-suggestion-id="activeSuggestion?.id"
             :loading="recipesStore.loadingList"
+            :loading-suggestions="recipesStore.loadingSuggestions"
             @select="selectRecipe"
+            @select-suggestion="selectSuggestion"
             @create="startNewRecipe"
           />
         </div>
 
         <!-- Правая область: Конструктор рецепта -->
         <div class="space-y-5 lg:col-span-8 xl:col-span-9">
+          <!-- Карточка просматриваемой заявки (если открыт предложенный рецепт) -->
+          <div
+            v-if="activeSuggestion"
+            class="organic-card rounded-3xl border border-accent/30 bg-accent-soft/45 p-5 shadow-organic-sm"
+          >
+            <div class="flex flex-wrap items-start justify-between gap-3">
+              <div class="min-w-0 flex-1 space-y-1">
+                <div class="flex flex-wrap items-center gap-2">
+                  <span class="inline-flex items-center gap-1.5 rounded-full bg-accent px-3 py-1 text-[11px] font-bold text-accent-contrast">
+                    <Inbox class="h-3.5 w-3.5" aria-hidden="true" />
+                    Заявка из приложения
+                  </span>
+                  <span v-if="activeSuggestion.author_name" class="text-xs font-semibold text-ink">
+                    От: {{ activeSuggestion.author_name }}
+                  </span>
+                  <span class="rounded-full bg-surface px-2.5 py-0.5 text-[11px] font-medium text-ink-secondary">
+                    {{ activeSuggestion.mode === 'full' ? 'Полная форма' : 'Быстрая идея' }}
+                  </span>
+                </div>
+
+                <p v-if="activeSuggestion.notes" class="pt-1 text-xs leading-relaxed text-ink-secondary">
+                  {{ activeSuggestion.notes }}
+                </p>
+
+                <a
+                  v-if="activeSuggestion.source_url"
+                  :href="activeSuggestion.source_url"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="inline-flex items-center gap-1 pt-1 text-xs font-semibold text-accent hover:underline"
+                >
+                  <ExternalLink class="h-3.5 w-3.5" aria-hidden="true" />
+                  <span>{{ activeSuggestion.source_url }}</span>
+                </a>
+              </div>
+
+              <div class="flex flex-wrap items-center gap-2">
+                <button
+                  v-if="activeSuggestion.status === 'pending'"
+                  type="button"
+                  class="tactile inline-flex items-center gap-1.5 rounded-2xl border border-danger/25 bg-surface px-3.5 py-2 text-xs font-semibold text-danger hover:bg-danger/10"
+                  @click="handleRejectSuggestion"
+                >
+                  <Ban class="h-3.5 w-3.5" aria-hidden="true" />
+                  <span>Отклонить</span>
+                </button>
+                <button
+                  v-else
+                  type="button"
+                  class="tactile inline-flex items-center gap-1.5 rounded-2xl border border-danger/25 bg-surface px-3.5 py-2 text-xs font-semibold text-danger hover:bg-danger/10"
+                  @click="handleDeleteSuggestion"
+                >
+                  <Trash2 class="h-3.5 w-3.5" aria-hidden="true" />
+                  <span>Удалить заявку</span>
+                </button>
+
+                <button
+                  type="button"
+                  :disabled="recipesStore.saving"
+                  class="tactile inline-flex items-center gap-1.5 rounded-2xl bg-accent px-4 py-2 text-xs font-semibold text-accent-contrast shadow-organic-sm hover:bg-accent-hover disabled:opacity-60"
+                  @click="handlePublishSuggestion"
+                >
+                  <Send class="h-3.5 w-3.5" aria-hidden="true" />
+                  <span>{{ recipesStore.saving ? 'Публикуем...' : 'Опубликовать в книгу' }}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
           <!-- Панель действий конструктора -->
           <div
             class="organic-card flex flex-wrap items-center justify-between gap-3 rounded-3xl border border-hairline bg-surface px-5 py-4 shadow-organic-sm"
           >
             <div>
               <h2 class="font-display text-xl font-bold text-ink">
-                {{ draft.id ? 'Редактирование рецепта' : 'Новый рецепт' }}
+                {{
+                  activeSuggestion
+                    ? 'Дооформление предложенного рецепта'
+                    : draft.id
+                      ? 'Редактирование рецепта'
+                      : 'Новый рецепт'
+                }}
               </h2>
               <p class="text-xs text-ink-secondary">
                 Изменения сразу доступны в мобильном приложении семьи.
@@ -266,6 +464,18 @@ function handleBatchImported(count: number) {
               </button>
 
               <button
+                v-if="activeSuggestion"
+                type="button"
+                :disabled="recipesStore.saving"
+                class="tactile inline-flex items-center gap-2 rounded-2xl bg-accent px-5 py-2.5 text-xs font-semibold text-accent-contrast shadow-organic-md hover:bg-accent-hover disabled:opacity-60"
+                @click="handlePublishSuggestion"
+              >
+                <Send class="h-4 w-4" aria-hidden="true" />
+                <span>{{ recipesStore.saving ? 'Публикуем...' : 'Опубликовать в книгу' }}</span>
+              </button>
+
+              <button
+                v-else
                 type="button"
                 :disabled="recipesStore.saving"
                 class="tactile inline-flex items-center gap-2 rounded-2xl bg-accent px-5 py-2.5 text-xs font-semibold text-accent-contrast shadow-organic-md hover:bg-accent-hover disabled:opacity-60"

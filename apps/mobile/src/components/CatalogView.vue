@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import {
   Clock,
   Flame,
@@ -16,6 +16,7 @@ import {
   DEFAULT_RECIPE_CATEGORIES,
   type RecipeWithIngredients,
 } from '@cookbook/shared';
+import { useAppStore } from '@/stores/app';
 import { useMobileRecipesStore } from '@/stores/recipes';
 import CachedImage from '@/components/CachedImage.vue';
 
@@ -23,6 +24,7 @@ const emit = defineEmits<{
   openRecipe: [recipe: RecipeWithIngredients];
 }>();
 
+const appStore = useAppStore();
 const recipesStore = useMobileRecipesStore();
 
 const searchQuery = ref('');
@@ -30,6 +32,16 @@ const selectedCategory = ref<string>('Все');
 const showPantryFilter = ref(false);
 const pantryInput = ref('');
 const pantryIngredients = ref<string[]>([]);
+
+watch(showPantryFilter, (open) => {
+  if (open) {
+    appStore.pushBackHandler('pantry-filter-panel', () => {
+      showPantryFilter.value = false;
+    });
+  } else {
+    appStore.removeBackHandler('pantry-filter-panel');
+  }
+});
 
 const categories = computed(() => {
   const fromRecipes = recipesStore.recipes.map((r) => r.category);
@@ -116,11 +128,11 @@ function getKcalPerServing(r: RecipeWithIngredients): number | null {
 </script>
 
 <template>
-  <div class="pb-28">
+  <div class="overflow-x-hidden pb-28">
     <!-- Шапка каталога -->
-    <header class="px-5 pb-3 pt-5">
+    <header class="px-4 pb-3 pt-5 sm:px-5">
       <div class="flex items-center justify-between gap-3">
-        <div class="flex items-center gap-3">
+        <div class="flex min-w-0 flex-1 items-center gap-3">
           <div class="h-12 w-12 shrink-0 overflow-hidden rounded-2xl border border-hairline bg-[#FDF0D5] shadow-organic-sm">
             <img
               src="/mascot.png"
@@ -128,13 +140,13 @@ function getKcalPerServing(r: RecipeWithIngredients): number | null {
               class="h-full w-full object-cover"
             />
           </div>
-          <div>
+          <div class="min-w-0 flex-1">
             <div class="flex items-center gap-2">
-              <h1 class="font-display text-2xl font-extrabold leading-tight text-ink">
+              <h1 class="truncate font-display text-2xl font-extrabold leading-tight text-ink">
                 Пухня
               </h1>
             </div>
-            <p class="text-xs font-medium text-ink-secondary">
+            <p class="truncate text-xs font-medium text-ink-secondary">
               Что приготовим сегодня?
             </p>
           </div>
@@ -142,7 +154,7 @@ function getKcalPerServing(r: RecipeWithIngredients): number | null {
 
         <span
           v-if="recipesStore.isOffline"
-          class="inline-flex items-center gap-1.5 rounded-full border border-warm/30 bg-warm/15 px-3 py-1.5 text-[11px] font-semibold text-warm"
+          class="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-warm/30 bg-warm/15 px-3 py-1.5 text-[11px] font-semibold text-warm"
         >
           <WifiOff class="h-3.5 w-3.5" aria-hidden="true" />
           Офлайн
@@ -151,7 +163,7 @@ function getKcalPerServing(r: RecipeWithIngredients): number | null {
 
       <!-- Поиск + кнопка фильтра по холодильнику -->
       <div class="mt-4 flex items-center gap-2">
-        <div class="relative flex-1">
+        <div class="relative min-w-0 flex-1">
           <Search
             class="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-tertiary"
             aria-hidden="true"
@@ -162,13 +174,13 @@ function getKcalPerServing(r: RecipeWithIngredients): number | null {
             enterkeyhint="search"
             placeholder="Название или продукт..."
             aria-label="Поиск рецептов"
-            class="w-full rounded-2xl border border-hairline bg-surface py-3 pl-10 pr-4 text-sm text-ink shadow-organic-sm placeholder:text-ink-tertiary focus:border-accent focus:outline-none"
+            class="w-full min-w-0 rounded-2xl border border-hairline bg-surface py-3 pl-10 pr-3 text-sm text-ink shadow-organic-sm placeholder:text-ink-tertiary focus:border-accent focus:outline-none"
           />
         </div>
 
         <button
           type="button"
-          class="tactile relative inline-flex h-[46px] shrink-0 items-center gap-1.5 rounded-2xl border px-3.5 text-xs font-semibold shadow-organic-sm"
+          class="tactile relative inline-flex h-[46px] shrink-0 items-center gap-1.5 rounded-2xl border px-3 text-xs font-semibold shadow-organic-sm sm:px-3.5"
           :class="
             showPantryFilter || pantryIngredients.length > 0
               ? 'border-accent bg-accent text-accent-contrast'
@@ -177,8 +189,8 @@ function getKcalPerServing(r: RecipeWithIngredients): number | null {
           :aria-expanded="showPantryFilter"
           @click="showPantryFilter = !showPantryFilter"
         >
-          <Refrigerator class="h-4 w-4" aria-hidden="true" />
-          <span class="hidden xs:inline">Дома</span>
+          <Refrigerator class="h-4 w-4 shrink-0" aria-hidden="true" />
+          <span class="hidden sm:inline">Дома</span>
           <span
             v-if="pantryIngredients.length > 0"
             class="ml-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-white/25 px-1 text-[10px] tabular-nums"
@@ -191,35 +203,35 @@ function getKcalPerServing(r: RecipeWithIngredients): number | null {
       <!-- Панель «Из того, что есть дома» -->
       <div
         v-if="showPantryFilter"
-        class="mt-3 rounded-3xl border border-hairline bg-surface p-4 shadow-organic-md"
+        class="mt-3 rounded-3xl border border-hairline bg-surface p-3.5 shadow-organic-md sm:p-4"
       >
-        <div class="mb-2 flex items-center justify-between">
-          <span class="font-display text-sm font-bold text-ink">
+        <div class="mb-2 flex items-center justify-between gap-2">
+          <span class="min-w-0 flex-1 truncate font-display text-sm font-bold text-ink">
             Что есть в холодильнике?
           </span>
           <button
             v-if="pantryIngredients.length > 0"
             type="button"
-            class="text-xs font-medium text-danger"
+            class="shrink-0 text-xs font-medium text-danger"
             @click="pantryIngredients = []"
           >
             Сбросить
           </button>
         </div>
 
-        <form class="flex gap-2" @submit.prevent="addPantryIngredient()">
+        <form class="flex items-center gap-2" @submit.prevent="addPantryIngredient()">
           <input
             v-model="pantryInput"
             type="text"
             placeholder="Например: курица, картофель..."
-            class="flex-1 rounded-xl border border-hairline bg-canvas px-3 py-2 text-xs text-ink placeholder:text-ink-tertiary focus:border-accent focus:outline-none"
+            class="min-w-0 flex-1 rounded-xl border border-hairline bg-canvas px-3 py-2 text-xs text-ink placeholder:text-ink-tertiary focus:border-accent focus:outline-none"
           />
           <button
             type="submit"
-            class="tactile inline-flex items-center gap-1 rounded-xl bg-accent px-3 py-2 text-xs font-semibold text-accent-contrast"
+            class="tactile inline-flex shrink-0 items-center gap-1 rounded-xl bg-accent px-3 py-2 text-xs font-semibold text-accent-contrast"
           >
-            <Plus class="h-3.5 w-3.5" aria-hidden="true" />
-            Добавить
+            <Plus class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            <span>Добавить</span>
           </button>
         </form>
 
@@ -363,7 +375,7 @@ function getKcalPerServing(r: RecipeWithIngredients): number | null {
       </section>
 
       <!-- Полный список рецептов -->
-      <section class="mt-4 px-5">
+      <section class="mt-4 px-4 sm:px-5">
         <h2 class="mb-3 font-display text-base font-bold text-ink">Все рецепты</h2>
 
         <div class="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
@@ -371,10 +383,10 @@ function getKcalPerServing(r: RecipeWithIngredients): number | null {
             v-for="{ recipe, matchedCount } in filteredRecipes"
             :key="`list-${recipe.id}`"
             type="button"
-            class="tactile organic-card squircle flex items-center gap-3.5 rounded-3xl border border-hairline bg-surface p-3 text-left shadow-organic-sm"
+            class="tactile organic-card squircle flex min-w-0 items-center gap-3 rounded-3xl border border-hairline bg-surface p-3 text-left shadow-organic-sm sm:gap-3.5"
             @click="emit('openRecipe', recipe)"
           >
-            <div class="relative h-24 w-24 shrink-0 overflow-hidden rounded-2xl bg-surface-muted">
+            <div class="relative h-20 w-20 shrink-0 overflow-hidden rounded-2xl bg-surface-muted sm:h-24 sm:w-24">
               <CachedImage
                 :src="recipe.cover_url"
                 :alt="recipe.title"
@@ -389,10 +401,10 @@ function getKcalPerServing(r: RecipeWithIngredients): number | null {
             </div>
 
             <div class="min-w-0 flex-1">
-              <span class="inline-block rounded-full bg-accent-soft px-2.5 py-0.5 text-[10px] font-semibold text-accent">
+              <span class="inline-block max-w-full truncate rounded-full bg-accent-soft px-2.5 py-0.5 text-[10px] font-semibold text-accent">
                 {{ recipe.category }}
               </span>
-              <h3 class="mt-1 line-clamp-2 font-display text-base font-bold leading-snug text-ink">
+              <h3 class="mt-1 line-clamp-2 break-words font-display text-base font-bold leading-snug text-ink">
                 {{ recipe.title }}
               </h3>
               <div class="mt-1.5 flex flex-wrap items-center gap-2 text-[11px] text-ink-secondary tabular-nums">

@@ -118,6 +118,13 @@ export async function clearOfflineCache(): Promise<void> {
   }
 }
 
+export interface OfflineShoppingBatchPayloadItem {
+  product_name: string;
+  amount: number;
+  unit: string;
+  recipe_title: string | null;
+}
+
 export type OfflineQueueAction =
   | {
       id: string;
@@ -131,6 +138,11 @@ export type OfflineQueueAction =
       type: 'toggle_shopping';
       item_id: string;
       is_checked: boolean;
+    }
+  | {
+      id: string;
+      type: 'add_shopping_batch';
+      items: OfflineShoppingBatchPayloadItem[];
     };
 
 export async function getOfflineQueue(): Promise<OfflineQueueAction[]> {

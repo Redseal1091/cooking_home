@@ -22,8 +22,8 @@ export const AI_PROMPT_TEMPLATE = `Ты — опытный шеф-повар и 
   "fats": 75,
   "carbs": 180,
   "ingredients": [
-    { "name": "Куриное филе", "amount": 500, "unit": "г", "is_scalable": true },
-    { "name": "Соль", "amount": 1, "unit": "по вкусу", "is_scalable": false }
+    { "name": "Куриное филе", "amount": 500, "unit": "г", "is_scalable": true, "section": "Для основы" },
+    { "name": "Соль", "amount": 1, "unit": "по вкусу", "is_scalable": false, "section": "Для основы" }
   ],
   "steps": [
     "Нарежьте куриное филе кубиками и обжарьте 7 мин на среднем огне.",
@@ -35,7 +35,8 @@ export const AI_PROMPT_TEMPLATE = `Ты — опытный шеф-повар и 
 1. КБЖУ (calories, proteins, fats, carbs) указывай СУММАРНО на весь рецепт (на все base_servings порций).
 2. Доступные единицы unit: ${INGREDIENT_UNITS.join(', ')}.
 3. Для соли, перца и специй по вкусу ставь "is_scalable": false.
-4. В тексте шагов пиши время в формате «10 мин», «45 минут», «1 час» — они автоматически станут таймерами.
+4. Поле "section" в ингредиентах необязательное (используй, если рецепт делится на части, например "Для теста", "Для начинки", "Для соуса").
+5. В тексте шагов пиши время в формате «10 мин», «45 минут», «1 час» — они автоматически станут таймерами.
 
 Блюдо для генерации: [НАПИШИТЕ ЗДЕСЬ НАЗВАНИЕ ИЛИ ПРОДУКТЫ]`;
 
@@ -48,6 +49,8 @@ interface RawIngredientInput {
   amount?: unknown;
   unit?: unknown;
   is_scalable?: unknown;
+  section?: unknown;
+  section_name?: unknown;
 }
 
 interface RawRecipeInput {
@@ -142,12 +145,19 @@ function normalizeRecipeObject(raw: RawRecipeInput): RecipeDraft {
       const ing = item as RawIngredientInput;
       const name = typeof ing?.name === 'string' ? ing.name.trim() : '';
       if (!name) return null;
+      const rawSection =
+        typeof ing.section === 'string'
+          ? ing.section.trim()
+          : typeof ing.section_name === 'string'
+            ? ing.section_name.trim()
+            : '';
       return {
         localId: crypto.randomUUID(),
         name,
         amount: toNumberOrNull(ing.amount),
         unit: typeof ing.unit === 'string' && ing.unit.trim() ? ing.unit.trim() : 'г',
         is_scalable: toBoolean(ing.is_scalable, true),
+        section_name: rawSection || null,
       };
     })
     .filter((i): i is IngredientDraft => i !== null);
@@ -327,12 +337,14 @@ export function parseRecipesFromCsvText(csvText: string): RecipeDraft[] {
             const amount = parts[1] !== undefined ? toNumberOrNull(parts[1]) : null;
             const unit = parts[2] || 'г';
             const isScalable = parts[3] !== undefined ? toBoolean(parts[3], true) : true;
+            const sectionName = parts[4]?.trim() || null;
             return {
               localId: crypto.randomUUID(),
               name,
               amount,
               unit,
               is_scalable: isScalable,
+              section_name: sectionName,
             };
           })
           .filter((i): i is IngredientDraft => i !== null)

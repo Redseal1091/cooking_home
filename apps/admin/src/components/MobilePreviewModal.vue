@@ -4,6 +4,7 @@ import { Clock, Flame, Minus, Play, Plus, Timer, Users, X } from 'lucide-vue-nex
 import {
   calculateNutritionPerServing,
   getScaleFactorByServings,
+  groupScaledIngredientsBySection,
   parseTimeTokens,
   scaleIngredients,
   type Ingredient,
@@ -72,10 +73,15 @@ const scaledIngredients = computed(() => {
       amount: i.amount,
       unit: i.unit,
       is_scalable: i.is_scalable,
+      section_name: i.section_name ?? null,
       order_index: idx,
     }));
   return scaleIngredients(asIngredients, scaleFactor.value);
 });
+
+const groupedIngredients = computed(() =>
+  groupScaledIngredientsBySection(scaledIngredients.value),
+);
 
 const perServing = computed(() =>
   calculateNutritionPerServing({
@@ -294,23 +300,33 @@ function splitTextWithTimers(text: string): TextSegment[] {
               </div>
             </div>
 
-            <ul class="divide-y divide-hairline text-xs">
-              <li
-                v-for="ing in scaledIngredients"
-                :key="ing.id"
-                class="flex items-center justify-between py-2"
-              >
-                <span class="text-ink">
-                  {{ ing.name }}
-                  <span v-if="!ing.is_scalable" class="ml-1 text-[10px] text-ink-tertiary">
-                    (фикс.)
-                  </span>
-                </span>
-                <span class="font-semibold text-accent tabular-nums">
-                  {{ ing.formattedAmount }} {{ ing.unit }}
-                </span>
-              </li>
-            </ul>
+            <div class="space-y-3">
+              <div v-for="(group, gIdx) in groupedIngredients" :key="group.sectionName ?? `g-${gIdx}`">
+                <p
+                  v-if="group.sectionName"
+                  class="mb-1 text-[11px] font-bold uppercase tracking-wider text-accent"
+                >
+                  {{ group.sectionName }}
+                </p>
+                <ul class="divide-y divide-hairline text-xs">
+                  <li
+                    v-for="ing in group.items"
+                    :key="ing.id"
+                    class="flex items-center justify-between gap-2 py-2"
+                  >
+                    <span class="min-w-0 flex-1 break-words text-ink">
+                      {{ ing.name }}
+                      <span v-if="!ing.is_scalable" class="ml-1 text-[10px] text-ink-tertiary">
+                        (фикс.)
+                      </span>
+                    </span>
+                    <span class="shrink-0 font-semibold text-accent tabular-nums">
+                      {{ ing.formattedAmount }} {{ ing.unit }}
+                    </span>
+                  </li>
+                </ul>
+              </div>
+            </div>
           </div>
 
           <!-- Блоки шагов из TipTap -->

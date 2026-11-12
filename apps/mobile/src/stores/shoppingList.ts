@@ -3,7 +3,20 @@ import { defineStore } from 'pinia';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import type { ScaledIngredient, ShoppingListItem } from '@cookbook/shared';
 import { supabase } from '@/lib/supabase';
-import { getCachedShoppingList, setCachedShoppingList } from '@/lib/offlineCache';
+import {
+  getCachedShoppingList,
+  getOfflineQueue,
+  pushOfflineQueue,
+  setCachedShoppingList,
+  setOfflineQueue,
+  type OfflineShoppingBatchPayloadItem,
+} from '@/lib/offlineCache';
+
+export interface ShoppingItemPatch {
+  product_name?: string;
+  amount?: number;
+  unit?: string;
+}
 
 export const useShoppingListStore = defineStore('mobile-shopping', () => {
   const items = ref<ShoppingListItem[]>([]);
@@ -33,6 +46,7 @@ export const useShoppingListStore = defineStore('mobile-shopping', () => {
     }
 
     if (navigator.onLine) {
+      await flushOfflineBatchQueue();
       await fetchItems();
       subscribeRealtime();
     }
@@ -68,7 +82,16 @@ export const useShoppingListStore = defineStore('mobile-shopping', () => {
         (payload) => {
           if (payload.eventType === 'INSERT') {
             const next = payload.new as ShoppingListItem;
-            if (!items.value.some((i) => i.id === next.id)) {
+            const localIdx = items.value.findIndex(
+              (i) =>
+                i.id.startsWith('local-') &&
+                !i.is_checked &&
+                i.product_name.trim().toLowerCase() === next.product_name.trim().toLowerCase() &&
+                i.unit.trim().toLowerCase() === next.unit.trim().toLowerCase(),
+            );
+            if (localIdx >= 0) {
+              items.value[localIdx] = next;
+            } else if (!items.value.some((i) => i.id === next.id)) {
               items.value.unshift(next);
             }
           } else if (payload.eventType === 'UPDATE') {
@@ -100,8 +123,127 @@ export const useShoppingListStore = defineStore('mobile-shopping', () => {
   }
 
   /**
-   * Добавляет один или несколько продуктов с автоматическим суммированием
-   * по совпадению названия и единицы измерения (через RPC в БД + локальный фолбэк).
+   * Мгновенно (Optimistic UI) объединяет или добавляет список продуктов в локальном сторе
+   * и возвращает ключи/ссылки для последующей синхронизации с ответом БД.
+   */
+  function applyOptimisticBatch(batch: OfflineShoppingBatchPayloadItem[]) {
+    const nowIso = new Date().toISOString();
+
+    for (const entry of batch) {
+      const cleanName = entry.product_name.trim();
+      const cleanUnit = entry.unit.trim() || 'шт';
+      const qty = Number(entry.amount) > 0 ? Number(entry.amount) : 1;
+      const recipeTitle = entry.recipe_title?.trim() || null;
+      if (!cleanName) continue;
+
+      const existing = items.value.find(
+        (i) =>
+          !i.is_checked &&
+          i.product_name.trim().toLowerCase() === cleanName.toLowerCase() &&
+          i.unit.trim().toLowerCase() === cleanUnit.toLowerCase(),
+      );
+
+      if (existing) {
+        existing.amount = Math.round((existing.amount + qty) * 100) / 100;
+        if (recipeTitle) {
+          if (!existing.recipe_title) {
+            existing.recipe_title = recipeTitle;
+          } else if (!existing.recipe_title.includes(recipeTitle)) {
+            existing.recipe_title = `${existing.recipe_title}, ${recipeTitle}`;
+          }
+        }
+      } else {
+        items.value.unshift({
+          id: `local-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          product_name: cleanName,
+          amount: qty,
+          unit: cleanUnit,
+          is_checked: false,
+          recipe_title: recipeTitle,
+          created_at: nowIso,
+        });
+      }
+    }
+  }
+
+  function reconcileServerRows(rows: ShoppingListItem[]) {
+    for (const row of rows) {
+      const byIdIdx = items.value.findIndex((i) => i.id === row.id);
+      if (byIdIdx >= 0) {
+        items.value[byIdIdx] = row;
+        continue;
+      }
+
+      const localIdx = items.value.findIndex(
+        (i) =>
+          i.id.startsWith('local-') &&
+          !i.is_checked &&
+          i.product_name.trim().toLowerCase() === row.product_name.trim().toLowerCase() &&
+          i.unit.trim().toLowerCase() === row.unit.trim().toLowerCase(),
+      );
+
+      if (localIdx >= 0) {
+        items.value[localIdx] = row;
+      } else {
+        items.value.unshift(row);
+      }
+    }
+  }
+
+  async function syncBatchInBackground(batch: OfflineShoppingBatchPayloadItem[]) {
+    if (batch.length === 0) return;
+
+    if (!navigator.onLine) {
+      await pushOfflineQueue({
+        id: `batch-${Date.now()}`,
+        type: 'add_shopping_batch',
+        items: batch,
+      });
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase.rpc('add_or_merge_shopping_items_batch', {
+        items: batch,
+      });
+
+      if (error) throw error;
+      if (Array.isArray(data)) {
+        reconcileServerRows(data as ShoppingListItem[]);
+        await persistCache();
+      }
+    } catch {
+      await pushOfflineQueue({
+        id: `batch-${Date.now()}`,
+        type: 'add_shopping_batch',
+        items: batch,
+      });
+    }
+  }
+
+  async function flushOfflineBatchQueue() {
+    if (!navigator.onLine) return;
+    const queue = await getOfflineQueue();
+    const batchActions = queue.filter((q) => q.type === 'add_shopping_batch');
+    if (batchActions.length === 0) return;
+
+    const remaining: typeof queue = queue.filter((q) => q.type !== 'add_shopping_batch');
+    for (const action of batchActions) {
+      if (action.type !== 'add_shopping_batch') continue;
+      try {
+        const { error } = await supabase.rpc('add_or_merge_shopping_items_batch', {
+          items: action.items,
+        });
+        if (error) throw error;
+      } catch {
+        remaining.push(action);
+      }
+    }
+    await setOfflineQueue(remaining);
+  }
+
+  /**
+   * Optimistic UI: мгновенное добавление одного продукта.
    */
   async function addOrMergeItem(
     productName: string,
@@ -113,59 +255,83 @@ export const useShoppingListStore = defineStore('mobile-shopping', () => {
     const cleanUnit = unit.trim() || 'шт';
     if (!cleanName) return;
 
-    if (!navigator.onLine) {
-      const existing = items.value.find(
-        (i) =>
-          !i.is_checked &&
-          i.product_name.trim().toLowerCase() === cleanName.toLowerCase() &&
-          i.unit.trim().toLowerCase() === cleanUnit.toLowerCase(),
-      );
-      if (existing) {
-        existing.amount = Math.round((existing.amount + amount) * 100) / 100;
-      } else {
-        items.value.unshift({
-          id: `local-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-          product_name: cleanName,
-          amount,
-          unit: cleanUnit,
-          is_checked: false,
-          recipe_title: recipeTitle,
-          created_at: new Date().toISOString(),
-        });
-      }
-      await persistCache();
-      return;
-    }
+    const payload: OfflineShoppingBatchPayloadItem[] = [
+      {
+        product_name: cleanName,
+        amount: amount > 0 ? amount : 1,
+        unit: cleanUnit,
+        recipe_title: recipeTitle,
+      },
+    ];
 
-    const { data, error } = await supabase.rpc('add_or_merge_shopping_item', {
-      p_product_name: cleanName,
-      p_amount: amount,
-      p_unit: cleanUnit,
-      p_recipe_title: recipeTitle,
-    });
+    // 1. Мгновенно (0 мс) обновляем локальный стор и кэш
+    applyOptimisticBatch(payload);
+    void persistCache();
 
-    if (!error && data) {
-      const row = data as ShoppingListItem;
-      const idx = items.value.findIndex((i) => i.id === row.id);
-      if (idx >= 0) {
-        items.value[idx] = row;
-      } else {
-        items.value.unshift(row);
-      }
-      await persistCache();
-    }
+    // 2. Отправляем в Supabase в фоне
+    void syncBatchInBackground(payload);
   }
 
-  async function addIngredientsFromRecipe(
+  /**
+   * Optimistic UI + Batch RPC: все ингредиенты рецепта добавляются за 0 мс локально
+   * и улетают в Supabase одним пакетным RPC-запросом в фоне.
+   */
+  function addIngredientsFromRecipe(
     scaledIngredients: ScaledIngredient[],
     recipeTitle: string,
-  ): Promise<number> {
-    const toAdd = scaledIngredients.filter((ing) => ing.name.trim().length > 0);
-    for (const ing of toAdd) {
-      const qty = ing.scaledAmount ?? 1;
-      await addOrMergeItem(ing.name, qty, ing.unit, recipeTitle);
+  ): number {
+    const batch: OfflineShoppingBatchPayloadItem[] = scaledIngredients
+      .filter((ing) => ing.name.trim().length > 0)
+      .map((ing) => ({
+        product_name: ing.name.trim(),
+        amount: ing.scaledAmount ?? 1,
+        unit: ing.unit.trim() || 'шт',
+        recipe_title: recipeTitle,
+      }));
+
+    if (batch.length === 0) return 0;
+
+    // 1. Мгновенное обновление Pinia и кэша
+    applyOptimisticBatch(batch);
+    void persistCache();
+
+    // 2. Один пакетный сетевой запрос в фоне
+    void syncBatchInBackground(batch);
+
+    return batch.length;
+  }
+
+  /**
+   * Optimistic UI: быстрое редактирование названия, количества или единицы измерения.
+   */
+  async function updateItem(id: string, patch: ShoppingItemPatch) {
+    const target = items.value.find((i) => i.id === id);
+    if (!target) return;
+
+    const nextPatch: ShoppingItemPatch = {};
+    if (patch.product_name !== undefined) {
+      const cleanName = patch.product_name.trim();
+      if (cleanName) {
+        target.product_name = cleanName;
+        nextPatch.product_name = cleanName;
+      }
     }
-    return toAdd.length;
+    if (patch.amount !== undefined && !Number.isNaN(patch.amount) && patch.amount > 0) {
+      const rounded = Math.round(patch.amount * 100) / 100;
+      target.amount = rounded;
+      nextPatch.amount = rounded;
+    }
+    if (patch.unit !== undefined) {
+      const cleanUnit = patch.unit.trim() || 'шт';
+      target.unit = cleanUnit;
+      nextPatch.unit = cleanUnit;
+    }
+
+    await persistCache();
+
+    if (navigator.onLine && !id.startsWith('local-') && Object.keys(nextPatch).length > 0) {
+      await supabase.from('shopping_list').update(nextPatch).eq('id', id);
+    }
   }
 
   async function toggleItem(id: string) {
@@ -215,8 +381,10 @@ export const useShoppingListStore = defineStore('mobile-shopping', () => {
     fetchItems,
     subscribeRealtime,
     unsubscribeRealtime,
+    flushOfflineBatchQueue,
     addOrMergeItem,
     addIngredientsFromRecipe,
+    updateItem,
     toggleItem,
     deleteItem,
     clearChecked,

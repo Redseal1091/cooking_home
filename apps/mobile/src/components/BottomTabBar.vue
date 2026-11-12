@@ -22,7 +22,11 @@ const emit = defineEmits<{
       <button
         type="button"
         class="tactile flex flex-col items-center gap-0.5 rounded-2xl py-1.5 text-[11px] font-semibold transition-colors"
-        :class="activeTab === 'catalog' ? 'text-accent' : 'text-ink-tertiary'"
+        :class="
+          activeTab === 'catalog'
+            ? 'text-accent dark:text-white dark:drop-shadow-[0_1px_5px_rgba(255,255,255,0.28)]'
+            : 'text-ink-tertiary'
+        "
         @click="emit('change', 'catalog')"
       >
         <BookOpen class="h-5 w-5" aria-hidden="true" />
@@ -32,7 +36,11 @@ const emit = defineEmits<{
       <button
         type="button"
         class="tactile relative flex flex-col items-center gap-0.5 rounded-2xl py-1.5 text-[11px] font-semibold transition-colors"
-        :class="activeTab === 'shopping' ? 'text-accent' : 'text-ink-tertiary'"
+        :class="
+          activeTab === 'shopping'
+            ? 'text-accent dark:text-white dark:drop-shadow-[0_1px_5px_rgba(255,255,255,0.28)]'
+            : 'text-ink-tertiary'
+        "
         @click="emit('change', 'shopping')"
       >
         <div class="relative">
@@ -50,7 +58,11 @@ const emit = defineEmits<{
       <button
         type="button"
         class="tactile flex flex-col items-center gap-0.5 rounded-2xl py-1.5 text-[11px] font-semibold transition-colors"
-        :class="activeTab === 'settings' ? 'text-accent' : 'text-ink-tertiary'"
+        :class="
+          activeTab === 'settings'
+            ? 'text-accent dark:text-white dark:drop-shadow-[0_1px_5px_rgba(255,255,255,0.28)]'
+            : 'text-ink-tertiary'
+        "
         @click="emit('change', 'settings')"
       >
         <Settings class="h-5 w-5" aria-hidden="true" />
