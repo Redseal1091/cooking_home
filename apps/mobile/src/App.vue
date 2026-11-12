@@ -98,7 +98,7 @@ onUnmounted(() => {
       @start="appStore.completeOnboarding()"
     />
 
-    <div v-else class="mx-auto min-h-dvh w-full max-w-lg overflow-x-hidden">
+    <div v-else class="mx-auto min-h-dvh w-full max-w-lg overflow-x-clip">
       <Transition name="slide" mode="out-in">
         <RecipeDetailView
           v-if="selectedRecipe"

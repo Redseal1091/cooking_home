@@ -149,7 +149,7 @@ function downloadAndInstallApk() {
 </script>
 
 <template>
-  <div class="space-y-5 overflow-x-hidden px-4 pb-28 pt-5 sm:px-5">
+  <div class="space-y-5 overflow-x-clip px-4 pb-28 pt-5 sm:px-5">
     <header class="min-w-0">
       <p class="text-xs font-medium uppercase tracking-wider text-accent">
         Персонализация

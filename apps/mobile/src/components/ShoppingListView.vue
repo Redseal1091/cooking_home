@@ -187,7 +187,7 @@ async function handleCopyText() {
 </script>
 
 <template>
-  <div class="overflow-x-hidden pb-28">
+  <div class="overflow-x-clip pb-28">
     <header class="px-4 pb-4 pt-5 sm:px-5">
       <div class="flex items-start justify-between gap-2">
         <div class="min-w-0 flex-1">

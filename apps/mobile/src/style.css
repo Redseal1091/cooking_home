@@ -5,16 +5,25 @@
 @tailwind utilities;
 
 @layer base {
-  html,
-  body {
-    overflow-x: hidden;
+  html {
+    overflow-x: clip;
+    overflow-y: auto;
     max-width: 100%;
+    -webkit-overflow-scrolling: touch;
   }
 
   body {
+    overflow-x: clip;
+    overflow-y: visible;
+    max-width: 100%;
+    min-height: 100dvh;
     padding-top: env(safe-area-inset-top);
     padding-bottom: env(safe-area-inset-bottom);
     overscroll-behavior-y: contain;
+  }
+
+  dialog:not([open]) {
+    pointer-events: none;
   }
 
   dialog:modal {
@@ -47,12 +56,18 @@
   scrollbar-width: none;
 }
 
+/* Allow both horizontal swipe and vertical page scroll on carousels & filter tracks */
+.touch-pan-xy {
+  touch-action: pan-x pan-y;
+}
+
 /* Horizontal snap carousel */
 .snap-carousel {
   display: flex;
   overflow-x: auto;
+  overflow-y: visible;
   scroll-snap-type: x mandatory;
-  touch-action: manipulation;
+  touch-action: pan-x pan-y;
   -webkit-overflow-scrolling: touch;
 }
 

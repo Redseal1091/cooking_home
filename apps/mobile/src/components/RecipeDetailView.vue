@@ -187,7 +187,7 @@ function formatNoteDate(iso: string): string {
 </script>
 
 <template>
-  <div class="overflow-x-hidden pb-32">
+  <div class="overflow-x-clip pb-32">
     <!-- Медиа-шапка -->
     <div class="relative aspect-[4/3] max-h-[380px] w-full bg-surface-muted">
       <video

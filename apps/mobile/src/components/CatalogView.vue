@@ -128,7 +128,7 @@ function getKcalPerServing(r: RecipeWithIngredients): number | null {
 </script>
 
 <template>
-  <div class="overflow-x-hidden pb-28">
+  <div class="overflow-x-clip pb-28">
     <!-- Шапка каталога -->
     <header class="px-4 pb-3 pt-5 sm:px-5">
       <div class="flex items-center justify-between gap-3">
@@ -268,7 +268,7 @@ function getKcalPerServing(r: RecipeWithIngredients): number | null {
     </header>
 
     <!-- Горизонтальные pill-фильтры категорий -->
-    <div class="no-scrollbar flex gap-2 overflow-x-auto px-5 py-2" role="tablist" aria-label="Категории рецептов">
+    <div class="no-scrollbar touch-pan-xy flex gap-2 overflow-x-auto px-5 py-2" role="tablist" aria-label="Категории рецептов">
       <button
         v-for="cat in categories"
         :key="cat"
