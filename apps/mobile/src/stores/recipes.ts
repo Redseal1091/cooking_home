@@ -1,6 +1,6 @@
 import { computed, ref } from 'vue';
 import { defineStore } from 'pinia';
-import type { RecipeWithIngredients, UserNote } from '@cookbook/shared';
+import { normalizeIngredient, type RecipeWithIngredients, type UserNote } from '@cookbook/shared';
 import { supabase } from '@/lib/supabase';
 import {
   cacheMediaUrls,
@@ -25,20 +25,31 @@ export const useMobileRecipesStore = defineStore('mobile-recipes', () => {
   const notesByRecipe = ref<Record<string, UserNote[]>>({});
 
   /**
-   * Уникальные названия ингредиентов по всей книге для подсказок в фильтре «Что есть дома».
+   * Уникальные очищенные названия ингредиентов по всей книге для подсказок в фильтре «Что есть дома».
    */
   const allIngredientNames = computed(() => {
-    const freq = new Map<string, number>();
+    const freq = new Map<string, { label: string; count: number }>();
     for (const recipe of recipes.value) {
+      const seenInRecipe = new Set<string>();
       for (const ing of recipe.ingredients) {
-        const clean = ing.name.trim();
+        const clean = normalizeIngredient(ing.name).name;
         if (!clean) continue;
-        freq.set(clean, (freq.get(clean) ?? 0) + 1);
+        const key = clean.toLowerCase();
+        if (seenInRecipe.has(key)) continue;
+        seenInRecipe.add(key);
+
+        const prev = freq.get(key);
+        const prettyLabel = clean.charAt(0).toUpperCase() + clean.slice(1);
+        if (prev) {
+          prev.count += 1;
+        } else {
+          freq.set(key, { label: prettyLabel, count: 1 });
+        }
       }
     }
-    return Array.from(freq.entries())
-      .sort((a, b) => b[1] - a[1])
-      .map(([name]) => name);
+    return Array.from(freq.values())
+      .sort((a, b) => b.count - a.count)
+      .map((item) => item.label);
   });
 
   function updateOnlineStatus() {
@@ -191,19 +202,66 @@ export const useMobileRecipesStore = defineStore('mobile-recipes', () => {
     }
   }
 
+  async function deleteNote(recipeId: string, noteId: string): Promise<boolean> {
+    const current = notesByRecipe.value[recipeId] ?? [];
+    notesByRecipe.value[recipeId] = current.filter((n) => n.id !== noteId);
+    await setCachedRecipeNotes(recipeId, notesByRecipe.value[recipeId]);
+
+    if (noteId.startsWith('local-')) {
+      const queue = await getOfflineQueue();
+      const filtered = queue.filter((q) => !(q.type === 'add_note' && q.id === noteId));
+      if (filtered.length !== queue.length) {
+        await setOfflineQueue(filtered);
+      }
+      return true;
+    }
+
+    if (!navigator.onLine) {
+      await pushOfflineQueue({
+        id: `del-note-${noteId}`,
+        type: 'delete_note',
+        note_id: noteId,
+      });
+      return true;
+    }
+
+    try {
+      const { error: dbErr } = await supabase.from('user_notes').delete().eq('id', noteId);
+      if (dbErr) throw dbErr;
+      return true;
+    } catch {
+      await pushOfflineQueue({
+        id: `del-note-${noteId}`,
+        type: 'delete_note',
+        note_id: noteId,
+      });
+      return true;
+    }
+  }
+
   async function flushOfflineNotes() {
     const queue = await getOfflineQueue();
-    const noteActions = queue.filter((q) => q.type === 'add_note');
+    const noteActions = queue.filter((q) => q.type === 'add_note' || q.type === 'delete_note');
     if (noteActions.length === 0) return;
 
-    const remaining: typeof queue = queue.filter((q) => q.type !== 'add_note');
+    const remaining: typeof queue = queue.filter(
+      (q) => q.type !== 'add_note' && q.type !== 'delete_note',
+    );
     for (const action of noteActions) {
-      if (action.type !== 'add_note') continue;
       try {
-        await supabase.from('user_notes').insert({
-          recipe_id: action.recipe_id,
-          note_text: action.note_text,
-        });
+        if (action.type === 'add_note') {
+          const { error: dbErr } = await supabase.from('user_notes').insert({
+            recipe_id: action.recipe_id,
+            note_text: action.note_text,
+          });
+          if (dbErr) throw dbErr;
+        } else if (action.type === 'delete_note') {
+          const { error: dbErr } = await supabase
+            .from('user_notes')
+            .delete()
+            .eq('id', action.note_id);
+          if (dbErr) throw dbErr;
+        }
       } catch {
         remaining.push(action);
       }
@@ -226,5 +284,6 @@ export const useMobileRecipesStore = defineStore('mobile-recipes', () => {
     precacheAllMedia,
     fetchNotes,
     addNote,
+    deleteNote,
   };
 });

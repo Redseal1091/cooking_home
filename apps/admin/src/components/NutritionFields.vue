@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { Flame, Scale, Timer, Users } from 'lucide-vue-next';
-import { calculateNutritionPerServing } from '@cookbook/shared';
+import { calculateDishCaloriesFrom100g } from '@cookbook/shared';
 
 const prepTimeMin = defineModel<number>('prepTimeMin', { required: true });
 const cookTimeMin = defineModel<number>('cookTimeMin', { required: true });
@@ -12,15 +12,8 @@ const proteins = defineModel<number | null>('proteins', { required: true });
 const fats = defineModel<number | null>('fats', { required: true });
 const carbs = defineModel<number | null>('carbs', { required: true });
 
-const perServing = computed(() =>
-  calculateNutritionPerServing({
-    base_servings: baseServings.value || 1,
-    total_weight_g: totalWeightG.value,
-    calories: calories.value,
-    proteins: proteins.value,
-    fats: fats.value,
-    carbs: carbs.value,
-  }),
+const wholeDishCalories = computed(() =>
+  calculateDishCaloriesFrom100g(calories.value, totalWeightG.value, 1),
 );
 
 function parseNullableNumber(e: Event): number | null {
@@ -35,21 +28,24 @@ function parseNullableNumber(e: Event): number | null {
   <section class="organic-card rounded-3xl border border-hairline bg-surface p-5 shadow-organic-sm">
     <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
       <div>
-        <h3 class="font-display text-base font-bold text-ink">Время, порции и КБЖУ</h3>
+        <h3 class="font-display text-base font-bold text-ink">Время, порции и КБЖУ на 100 г</h3>
         <p class="text-xs text-ink-secondary">
-          Указывайте суммарные КБЖУ на весь рецепт — приложение пересчитает их на 1 порцию.
+          Указывайте пищевую ценность строго на 100 г готового блюда.
         </p>
       </div>
 
       <div
-        v-if="perServing.calories !== null"
-        class="inline-flex items-center gap-2 rounded-full bg-accent-soft px-3.5 py-1.5 text-xs font-medium text-accent tabular-nums"
+        v-if="calories !== null"
+        class="inline-flex flex-wrap items-center gap-2 rounded-full bg-accent-soft px-3.5 py-1.5 text-xs font-medium text-accent tabular-nums"
       >
         <Flame class="h-3.5 w-3.5" aria-hidden="true" />
         <span>
-          На 1 порцию: <strong>{{ perServing.calories }} ккал</strong>
-          <template v-if="perServing.proteins !== null || perServing.fats !== null || perServing.carbs !== null">
-            · Б {{ perServing.proteins ?? 0 }} / Ж {{ perServing.fats ?? 0 }} / У {{ perServing.carbs ?? 0 }}
+          На 100 г: <strong>{{ Math.round(calories) }} ккал</strong>
+          <template v-if="proteins !== null || fats !== null || carbs !== null">
+            · Б {{ proteins ?? 0 }} / Ж {{ fats ?? 0 }} / У {{ carbs ?? 0 }}
+          </template>
+          <template v-if="wholeDishCalories !== null">
+            · весь выход ~{{ wholeDishCalories }} ккал
           </template>
         </span>
       </div>
@@ -123,7 +119,7 @@ function parseNullableNumber(e: Event): number | null {
     <div class="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
       <div>
         <label for="kcal" class="mb-1 block text-xs font-medium text-ink-secondary">
-          Калории (всего)
+          Калории (на 100 г)
         </label>
         <input
           id="kcal"
@@ -139,7 +135,7 @@ function parseNullableNumber(e: Event): number | null {
 
       <div>
         <label for="proteins" class="mb-1 block text-xs font-medium text-ink-secondary">
-          Белки (г)
+          Белки (г / 100 г)
         </label>
         <input
           id="proteins"
@@ -155,7 +151,7 @@ function parseNullableNumber(e: Event): number | null {
 
       <div>
         <label for="fats" class="mb-1 block text-xs font-medium text-ink-secondary">
-          Жиры (г)
+          Жиры (г / 100 г)
         </label>
         <input
           id="fats"
@@ -171,7 +167,7 @@ function parseNullableNumber(e: Event): number | null {
 
       <div>
         <label for="carbs" class="mb-1 block text-xs font-medium text-ink-secondary">
-          Углеводы (г)
+          Углеводы (г / 100 г)
         </label>
         <input
           id="carbs"

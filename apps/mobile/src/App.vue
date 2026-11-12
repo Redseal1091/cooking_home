@@ -1,9 +1,13 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue';
+import { onMounted, onUnmounted, ref, watch } from 'vue';
 import { App as CapApp } from '@capacitor/app';
 import type { PluginListenerHandle } from '@capacitor/core';
 import type { RecipeWithIngredients } from '@cookbook/shared';
 import { useTheme } from '@/composables/useTheme';
+import {
+  applyStatusBarAppearance,
+  ensureEdgeToEdgeStatusBar,
+} from '@/composables/useStatusBar';
 import { useAppStore } from '@/stores/app';
 import { useMobileRecipesStore } from '@/stores/recipes';
 import { useShoppingListStore } from '@/stores/shoppingList';
@@ -15,7 +19,7 @@ import SettingsView from '@/components/SettingsView.vue';
 import FloatingTimerBar from '@/components/FloatingTimerBar.vue';
 import BottomTabBar, { type MobileTab } from '@/components/BottomTabBar.vue';
 
-useTheme();
+const { isDark } = useTheme();
 
 const appStore = useAppStore();
 const recipesStore = useMobileRecipesStore();
@@ -24,6 +28,24 @@ const shoppingStore = useShoppingListStore();
 const activeTab = ref<MobileTab>('catalog');
 const selectedRecipe = ref<RecipeWithIngredients | null>(null);
 let backButtonHandle: PluginListenerHandle | null = null;
+
+watch(
+  [
+    () => appStore.initializing,
+    () => appStore.onboardingSeen,
+    () => Boolean(selectedRecipe.value),
+    isDark,
+  ],
+  ([initializing, onboardingSeen, hasSelectedRecipe, dark]) => {
+    if (initializing) {
+      void applyStatusBarAppearance(dark ? 'light-content' : 'dark-content');
+      return;
+    }
+    const useLightIcons = !onboardingSeen || hasSelectedRecipe || dark;
+    void applyStatusBarAppearance(useLightIcons ? 'light-content' : 'dark-content');
+  },
+  { immediate: true },
+);
 
 function handleNetworkChange() {
   recipesStore.updateOnlineStatus();
@@ -43,6 +65,7 @@ function closeRecipe() {
 }
 
 onMounted(async () => {
+  void ensureEdgeToEdgeStatusBar();
   window.addEventListener('online', handleNetworkChange);
   window.addEventListener('offline', handleNetworkChange);
 

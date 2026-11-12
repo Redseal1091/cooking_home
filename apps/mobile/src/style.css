@@ -17,7 +17,6 @@
     overflow-y: visible;
     max-width: 100%;
     min-height: 100dvh;
-    padding-top: env(safe-area-inset-top);
     padding-bottom: env(safe-area-inset-bottom);
     overscroll-behavior-y: contain;
   }

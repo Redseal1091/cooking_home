@@ -135,9 +135,27 @@ export function groupScaledIngredientsBySection(
 }
 
 /**
- * Рассчитывает КБЖУ на 1 порцию.
- * В БД поля calories, proteins, fats, carbs хранят значения на весь рецепт (или базовый выход).
- * При пересчёте на 1 порцию делим на `base_servings`.
+ * Рассчитывает общую калорийность всего объёма блюда по КБЖУ на 100 г и весу выхода.
+ */
+export function calculateDishCaloriesFrom100g(
+  caloriesPer100g: number | null,
+  totalWeightG: number | null,
+  scaleFactor = 1,
+): number | null {
+  if (
+    caloriesPer100g === null ||
+    caloriesPer100g === undefined ||
+    !totalWeightG ||
+    totalWeightG <= 0
+  ) {
+    return null;
+  }
+  const factor = scaleFactor > 0 ? scaleFactor : 1;
+  return Math.round((caloriesPer100g * totalWeightG * factor) / 100);
+}
+
+/**
+ * Рассчитывает КБЖУ на 1 порцию (legacy helper).
  */
 export function calculateNutritionPerServing(
   recipe: Pick<

@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue';
 import { Clock, Flame, Minus, Play, Plus, Timer, Users, X } from 'lucide-vue-next';
 import {
-  calculateNutritionPerServing,
+  calculateDishCaloriesFrom100g,
   getScaleFactorByServings,
   groupScaledIngredientsBySection,
   parseTimeTokens,
@@ -45,17 +45,9 @@ function handleDialogClose() {
   emit('close');
 }
 
-function handleBackdropClick(e: PointerEvent) {
-  const dialog = dialogRef.value;
-  if (!dialog) return;
-  const r = dialog.getBoundingClientRect();
-  if (
-    e.clientX < r.left ||
-    e.clientX > r.right ||
-    e.clientY < r.top ||
-    e.clientY > r.bottom
-  ) {
-    dialog.close();
+function onBackdropClick(event: MouseEvent) {
+  if (event.target === event.currentTarget) {
+    dialogRef.value?.close();
   }
 }
 
@@ -83,15 +75,8 @@ const groupedIngredients = computed(() =>
   groupScaledIngredientsBySection(scaledIngredients.value),
 );
 
-const perServing = computed(() =>
-  calculateNutritionPerServing({
-    base_servings: props.draft.base_servings || 1,
-    total_weight_g: props.draft.total_weight_g,
-    calories: props.draft.calories,
-    proteins: props.draft.proteins,
-    fats: props.draft.fats,
-    carbs: props.draft.carbs,
-  }),
+const wholeDishCalories = computed(() =>
+  calculateDishCaloriesFrom100g(props.draft.calories, props.draft.total_weight_g, scaleFactor.value),
 );
 
 function extractPlainText(node: TipTapNode): string {
@@ -134,7 +119,7 @@ function splitTextWithTimers(text: string): TextSegment[] {
     aria-labelledby="preview-modal-title"
     class="m-auto max-h-[94dvh] w-full max-w-[430px] overflow-visible rounded-[44px] border-0 bg-transparent p-2 shadow-none"
     @close="handleDialogClose"
-    @pointerdown="handleBackdropClick"
+    @click="onBackdropClick"
   >
     <div
       class="relative flex max-h-[90dvh] flex-col overflow-hidden rounded-[40px] border-[6px] border-[#1F221F] bg-canvas shadow-organic-lg"
@@ -188,11 +173,11 @@ function splitTextWithTimers(text: string): TextSegment[] {
               {{ draft.category }}
             </span>
             <span
-              v-if="perServing.calories !== null"
+              v-if="draft.calories !== null"
               class="glass-pill inline-flex items-center gap-1 rounded-full px-3 py-1 text-[11px] font-semibold tabular-nums"
             >
               <Flame class="h-3 w-3" aria-hidden="true" />
-              {{ perServing.calories }} ккал/порц.
+              {{ Math.round(draft.calories) }} ккал / 100 г
             </span>
           </div>
 
@@ -250,26 +235,38 @@ function splitTextWithTimers(text: string): TextSegment[] {
             </div>
           </div>
 
-          <!-- Блок КБЖУ на 1 порцию -->
+          <!-- Блок КБЖУ на 100 г -->
           <div
-            v-if="perServing.calories !== null"
-            class="grid grid-cols-4 gap-2 rounded-3xl border border-hairline bg-surface p-3 text-center shadow-organic-sm tabular-nums"
+            v-if="draft.calories !== null"
+            class="rounded-3xl border border-hairline bg-surface p-3 shadow-organic-sm tabular-nums"
           >
-            <div>
-              <div class="text-[10px] text-ink-tertiary">Ккал</div>
-              <div class="text-xs font-bold text-ink">{{ perServing.calories }}</div>
+            <div class="mb-2 flex items-center justify-between gap-2 text-[11px]">
+              <span class="flex items-center gap-1 font-display font-bold text-ink">
+                <Flame class="h-3.5 w-3.5 text-accent" aria-hidden="true" />
+                Пищевая ценность на 100 г
+              </span>
+              <span v-if="wholeDishCalories !== null" class="text-[10px] text-ink-tertiary">
+                Весь объём: {{ wholeDishCalories }} ккал
+              </span>
             </div>
-            <div>
-              <div class="text-[10px] text-ink-tertiary">Белки</div>
-              <div class="text-xs font-bold text-ink">{{ perServing.proteins ?? '—' }} г</div>
-            </div>
-            <div>
-              <div class="text-[10px] text-ink-tertiary">Жиры</div>
-              <div class="text-xs font-bold text-ink">{{ perServing.fats ?? '—' }} г</div>
-            </div>
-            <div>
-              <div class="text-[10px] text-ink-tertiary">Углеводы</div>
-              <div class="text-xs font-bold text-ink">{{ perServing.carbs ?? '—' }} г</div>
+
+            <div class="grid grid-cols-4 gap-2 text-center">
+              <div>
+                <div class="text-[10px] text-ink-tertiary">Ккал</div>
+                <div class="text-xs font-bold text-ink">{{ Math.round(draft.calories) }}</div>
+              </div>
+              <div>
+                <div class="text-[10px] text-ink-tertiary">Белки</div>
+                <div class="text-xs font-bold text-ink">{{ draft.proteins ?? '—' }} г</div>
+              </div>
+              <div>
+                <div class="text-[10px] text-ink-tertiary">Жиры</div>
+                <div class="text-xs font-bold text-ink">{{ draft.fats ?? '—' }} г</div>
+              </div>
+              <div>
+                <div class="text-[10px] text-ink-tertiary">Углеводы</div>
+                <div class="text-xs font-bold text-ink">{{ draft.carbs ?? '—' }} г</div>
+              </div>
             </div>
           </div>
 

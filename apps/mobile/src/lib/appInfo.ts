@@ -1,28 +1,45 @@
-export const APP_VERSION = '1.1.0';
-export const DEFAULT_GITHUB_REPO =
-  (import.meta.env.VITE_GITHUB_REPO as string | undefined)?.trim() ||
-  'Redseal1091/cooking_home';
+import { Preferences } from '@capacitor/preferences';
 
-const GITHUB_REPO_STORAGE_KEY = 'pukhnya_github_repo_v1';
+export const APP_VERSION = '1.3.0';
 
-export function getSavedGithubRepo(): string {
+const ENV_GITHUB_REPO = (
+  (import.meta.env.VITE_GITHUB_REPO as string | undefined) ?? ''
+).trim();
+
+export const HAS_ENV_GITHUB_REPO = ENV_GITHUB_REPO.length > 0;
+export const DEFAULT_GITHUB_REPO = ENV_GITHUB_REPO || 'Redseal1091/cooking_home';
+
+const GITHUB_REPO_PREF_KEY = 'pukhnya_github_repo_v1';
+
+export function normalizeGithubRepo(raw: string): string {
+  return raw
+    .trim()
+    .replace(/^https?:\/\/(?:www\.)?github\.com\//i, '')
+    .replace(/\.git$/i, '')
+    .replace(/^\/+|\/+$/g, '');
+}
+
+export async function loadSavedGithubRepo(): Promise<string> {
   try {
-    const saved = localStorage.getItem(GITHUB_REPO_STORAGE_KEY)?.trim();
-    if (saved && saved.includes('/')) return saved;
+    const { value } = await Preferences.get({ key: GITHUB_REPO_PREF_KEY });
+    const clean = value ? normalizeGithubRepo(value) : '';
+    if (clean && clean.includes('/')) {
+      return clean;
+    }
   } catch {
     // ignore
   }
   return DEFAULT_GITHUB_REPO;
 }
 
-export function setSavedGithubRepo(repo: string): string {
-  const clean = repo.trim().replace(/^https?:\/\/github\.com\//i, '').replace(/\.git$/i, '').replace(/^\/+|\/+$/g, '');
+export async function saveGithubRepo(repo: string): Promise<string> {
+  const clean = normalizeGithubRepo(repo);
   try {
-    if (!clean || clean === DEFAULT_GITHUB_REPO) {
-      localStorage.removeItem(GITHUB_REPO_STORAGE_KEY);
-    } else {
-      localStorage.setItem(GITHUB_REPO_STORAGE_KEY, clean);
+    if (!clean) {
+      await Preferences.remove({ key: GITHUB_REPO_PREF_KEY });
+      return DEFAULT_GITHUB_REPO;
     }
+    await Preferences.set({ key: GITHUB_REPO_PREF_KEY, value: clean });
   } catch {
     // ignore
   }
@@ -62,9 +79,10 @@ export interface ReleaseUpdateInfo {
   latestVersion: string;
   releaseName: string;
   changelog: string;
-  apkDownloadUrl: string | null;
-  apkFileName: string | null;
+  apkDownloadUrl: string;
+  apkFileName: string;
   htmlUrl: string;
+  isPrerelease: boolean;
 }
 
 interface GithubReleaseAsset {
@@ -72,61 +90,94 @@ interface GithubReleaseAsset {
   browser_download_url?: string;
 }
 
-interface GithubLatestReleaseResponse {
+interface GithubReleaseResponse {
   tag_name?: string;
   name?: string;
   body?: string;
   html_url?: string;
+  draft?: boolean;
+  prerelease?: boolean;
   assets?: GithubReleaseAsset[];
 }
 
 export async function checkGithubLatestRelease(repo: string): Promise<ReleaseUpdateInfo> {
-  const cleanRepo = repo.trim();
-  if (!cleanRepo || !cleanRepo.includes('/')) {
-    throw new Error('Укажите репозиторий в формате owner/repo');
+  const cleanRepo = normalizeGithubRepo(repo);
+  if (!/^[^/\s]+\/[^/\s]+$/.test(cleanRepo)) {
+    throw new Error('Укажите репозиторий GitHub в формате owner/repo (например: Redseal1091/cooking_home).');
   }
 
-  const response = await fetch(
+  const headers = {
+    Accept: 'application/vnd.github+json',
+  };
+
+  let releaseData: GithubReleaseResponse | null = null;
+
+  const latestRes = await fetch(
     `https://api.github.com/repos/${cleanRepo}/releases/latest`,
-    {
-      headers: {
-        Accept: 'application/vnd.github+json',
-      },
-    },
+    { headers },
   );
 
-  if (response.status === 404) {
-    return {
-      hasUpdate: false,
-      latestVersion: APP_VERSION,
-      releaseName: `v${APP_VERSION}`,
-      changelog: '',
-      apkDownloadUrl: null,
-      apkFileName: null,
-      htmlUrl: `https://github.com/${cleanRepo}/releases`,
-    };
+  if (latestRes.ok) {
+    releaseData = (await latestRes.json()) as GithubReleaseResponse;
+  } else if (latestRes.status === 404) {
+    // Fallback на список всех релизов (например, если релиз отмечен как Pre-release)
+    const listRes = await fetch(
+      `https://api.github.com/repos/${cleanRepo}/releases?per_page=10`,
+      { headers },
+    );
+
+    if (listRes.status === 404) {
+      throw new Error(
+        `Репозиторий «${cleanRepo}» не найден или он приватный. Проверьте адрес owner/repo.`,
+      );
+    }
+    if (listRes.status === 401 || listRes.status === 403) {
+      throw new Error(
+        `GitHub API отклонил запрос (HTTP ${listRes.status}). Репозиторий приватный или превышен лимит запросов.`,
+      );
+    }
+    if (!listRes.ok) {
+      throw new Error(`Ошибка проверки релизов на GitHub (HTTP ${listRes.status}).`);
+    }
+
+    const list = (await listRes.json()) as GithubReleaseResponse[];
+    if (!Array.isArray(list) || list.length === 0) {
+      throw new Error(`В репозитории «${cleanRepo}» ещё не опубликовано ни одного релиза.`);
+    }
+
+    releaseData = list.find((r) => !r.draft) ?? list[0];
+  } else if (latestRes.status === 401 || latestRes.status === 403) {
+    throw new Error(
+      `GitHub API отклонил запрос (HTTP ${latestRes.status}). Репозиторий приватный или превышен лимит запросов.`,
+    );
+  } else {
+    throw new Error(`Не удалось проверить обновления на GitHub (HTTP ${latestRes.status}).`);
   }
 
-  if (!response.ok) {
-    throw new Error(`Не удалось проверить обновления (HTTP ${response.status})`);
+  if (!releaseData) {
+    throw new Error(`В репозитории «${cleanRepo}» не найден доступный релиз.`);
   }
 
-  const data = (await response.json()) as GithubLatestReleaseResponse;
-  const tag = (data.tag_name || data.name || APP_VERSION).trim();
+  const tag = (releaseData.tag_name || releaseData.name || APP_VERSION).trim();
   const latestVersion = tag.replace(/^v/i, '');
 
-  const assets = Array.isArray(data.assets) ? data.assets : [];
+  const assets = Array.isArray(releaseData.assets) ? releaseData.assets : [];
   const apkAsset = assets.find((a) => (a.name ?? '').toLowerCase().endsWith('.apk'));
+
+  if (!apkAsset?.browser_download_url) {
+    throw new Error(`В релизе «${tag}» не найден прикреплённый .apk файл.`);
+  }
 
   const isNewer = compareVersions(latestVersion, APP_VERSION) > 0;
 
   return {
-    hasUpdate: isNewer && Boolean(apkAsset?.browser_download_url),
+    hasUpdate: isNewer,
     latestVersion,
-    releaseName: data.name || tag,
-    changelog: (data.body || '').trim(),
-    apkDownloadUrl: apkAsset?.browser_download_url ?? null,
-    apkFileName: apkAsset?.name ?? null,
-    htmlUrl: data.html_url || `https://github.com/${cleanRepo}/releases/latest`,
+    releaseName: releaseData.name || tag,
+    changelog: (releaseData.body || '').trim(),
+    apkDownloadUrl: apkAsset.browser_download_url,
+    apkFileName: apkAsset.name || `pukhnya-${latestVersion}.apk`,
+    htmlUrl: releaseData.html_url || `https://github.com/${cleanRepo}/releases`,
+    isPrerelease: Boolean(releaseData.prerelease),
   };
 }

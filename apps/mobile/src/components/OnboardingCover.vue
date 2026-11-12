@@ -7,7 +7,7 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <div class="relative flex min-h-dvh flex-col items-center justify-center overflow-hidden bg-[#16261E] px-6 py-10 text-white">
+  <div class="relative flex min-h-dvh flex-col items-center justify-center overflow-hidden bg-[#16261E] px-6 pb-10 pt-[max(env(safe-area-inset-top),2.5rem)] text-white">
     <!-- Атмосферный органический фон -->
     <div
       class="pointer-events-none absolute inset-0"

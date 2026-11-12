@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { onMounted, ref, watch } from 'vue';
 import {
   ArrowUpCircle,
   CheckCircle2,
@@ -22,8 +22,10 @@ import { clearOfflineCache } from '@/lib/offlineCache';
 import {
   APP_VERSION,
   checkGithubLatestRelease,
-  getSavedGithubRepo,
-  setSavedGithubRepo,
+  DEFAULT_GITHUB_REPO,
+  HAS_ENV_GITHUB_REPO,
+  loadSavedGithubRepo,
+  saveGithubRepo,
   type ReleaseUpdateInfo,
 } from '@/lib/appInfo';
 import { useAppStore } from '@/stores/app';
@@ -40,12 +42,16 @@ const clearingCache = ref(false);
 const suggestOpen = ref(false);
 const toastMessage = ref<string | null>(null);
 
-const githubRepo = ref(getSavedGithubRepo());
-const showRepoEditor = ref(false);
+const githubRepo = ref(DEFAULT_GITHUB_REPO);
+const showRepoEditor = ref(!HAS_ENV_GITHUB_REPO);
 const checkingUpdates = ref(false);
 const updateError = ref<string | null>(null);
 const updateInfo = ref<ReleaseUpdateInfo | null>(null);
 const updateDialogRef = ref<HTMLDialogElement | null>(null);
+
+onMounted(async () => {
+  githubRepo.value = await loadSavedGithubRepo();
+});
 
 const themeOptions: { value: ThemePreference; label: string; icon: typeof Sun }[] = [
   { value: 'system', label: 'Системная', icon: Monitor },
@@ -93,9 +99,11 @@ async function handleClearOfflineCache() {
   }
 }
 
-function saveRepoSetting() {
-  githubRepo.value = setSavedGithubRepo(githubRepo.value);
-  showRepoEditor.value = false;
+async function saveRepoSetting() {
+  githubRepo.value = await saveGithubRepo(githubRepo.value);
+  if (HAS_ENV_GITHUB_REPO) {
+    showRepoEditor.value = false;
+  }
   showToast(`Репозиторий обновлений: ${githubRepo.value}`);
 }
 
@@ -109,13 +117,9 @@ async function handleCheckUpdates() {
   updateError.value = null;
 
   try {
-    githubRepo.value = setSavedGithubRepo(githubRepo.value);
+    githubRepo.value = await saveGithubRepo(githubRepo.value);
     const info = await checkGithubLatestRelease(githubRepo.value);
-    if (info.hasUpdate && info.apkDownloadUrl) {
-      updateInfo.value = info;
-    } else {
-      showToast('У вас установлена самая свежая версия Пухни!');
-    }
+    updateInfo.value = info;
   } catch (err) {
     updateError.value = err instanceof Error ? err.message : 'Ошибка проверки обновлений';
   } finally {
@@ -142,15 +146,25 @@ function closeUpdateDialog() {
   updateInfo.value = null;
 }
 
-function downloadAndInstallApk() {
-  if (!updateInfo.value?.apkDownloadUrl) return;
-  window.open(updateInfo.value.apkDownloadUrl, '_system');
+function onUpdateBackdropClick(event: MouseEvent) {
+  if (event.target === event.currentTarget) {
+    updateDialogRef.value?.close();
+  }
+}
+
+function openApkExternally(event: MouseEvent) {
+  const url = updateInfo.value?.apkDownloadUrl;
+  if (!url) return;
+  const opened = window.open(url, '_system');
+  if (opened) {
+    event.preventDefault();
+  }
 }
 </script>
 
 <template>
-  <div class="space-y-5 overflow-x-clip px-4 pb-28 pt-5 sm:px-5">
-    <header class="min-w-0">
+  <div class="overflow-x-clip pb-28">
+    <header class="sticky top-0 z-20 border-b border-hairline/50 bg-canvas/80 px-4 pb-3 pt-[max(env(safe-area-inset-top),2rem)] backdrop-blur-xl sm:px-5">
       <p class="text-xs font-medium uppercase tracking-wider text-accent">
         Персонализация
       </p>
@@ -158,6 +172,8 @@ function downloadAndInstallApk() {
         Настройки
       </h1>
     </header>
+
+    <div class="space-y-5 px-4 pt-4 sm:px-5">
 
     <!-- Предложить рецепт -->
     <section class="organic-card rounded-3xl border border-accent/25 bg-surface p-4 shadow-organic-sm">
@@ -301,15 +317,15 @@ function downloadAndInstallApk() {
         <input
           v-model="githubRepo"
           type="text"
-          placeholder="owner/repo"
-          aria-label="GitHub репозиторий"
+          placeholder="GitHub репозиторий (owner/repo)"
+          aria-label="GitHub репозиторий (owner/repo)"
           class="min-w-0 flex-1 bg-transparent text-xs text-ink focus:outline-none"
         />
         <button
           type="submit"
           class="tactile shrink-0 rounded-xl bg-accent px-3 py-1.5 text-[11px] font-semibold text-accent-contrast"
         >
-          Ок
+          Сохранить
         </button>
       </form>
 
@@ -330,6 +346,7 @@ function downloadAndInstallApk() {
         {{ updateError }}
       </p>
     </section>
+    </div>
 
     <!-- Модалка предложения рецепта -->
     <SuggestRecipeModal
@@ -342,51 +359,78 @@ function downloadAndInstallApk() {
     <dialog
       ref="updateDialogRef"
       aria-labelledby="update-modal-title"
-      class="m-auto w-[calc(100%-2rem)] max-w-sm rounded-4xl border border-hairline bg-surface p-5 text-ink shadow-organic-lg"
+      class="open:flex fixed inset-0 m-0 h-dvh max-h-none w-full max-w-none flex-col items-center justify-end overflow-hidden border-0 bg-transparent p-0 pt-[max(18dvh,calc(env(safe-area-inset-top)+3rem))] sm:justify-center sm:px-4 sm:pb-6"
       @close="closeUpdateDialog"
+      @click="onUpdateBackdropClick"
     >
-      <div class="flex items-start justify-between gap-3">
-        <div class="min-w-0">
-          <span class="inline-block rounded-full bg-accent-soft px-2.5 py-0.5 text-[11px] font-bold text-accent tabular-nums">
-            Доступна v{{ updateInfo?.latestVersion }}
-          </span>
-          <h3 id="update-modal-title" class="mt-1.5 font-display text-lg font-extrabold text-ink">
-            {{ updateInfo?.releaseName || 'Новое обновление Пухни' }}
-          </h3>
-        </div>
-        <button
-          type="button"
-          aria-label="Закрыть"
-          class="tactile shrink-0 rounded-full bg-surface-muted p-1.5 text-ink-secondary"
-          @click="updateDialogRef?.close()"
-        >
-          <X class="h-4 w-4" aria-hidden="true" />
-        </button>
-      </div>
-
       <div
-        v-if="updateInfo?.changelog"
-        class="mt-3 max-h-48 overflow-y-auto whitespace-pre-wrap rounded-2xl bg-canvas p-3 text-xs leading-relaxed text-ink-secondary"
+        class="flex max-h-[80dvh] w-full max-w-sm flex-col overflow-hidden rounded-t-3xl border border-b-0 border-hairline bg-surface text-ink shadow-organic-lg sm:rounded-3xl sm:border-b"
       >
-        {{ updateInfo.changelog }}
-      </div>
+        <div class="flex shrink-0 items-start justify-between gap-3 border-b border-hairline px-5 py-4">
+          <div class="min-w-0">
+            <span
+              class="inline-block rounded-full px-2.5 py-0.5 text-[11px] font-bold tabular-nums"
+              :class="
+                updateInfo?.hasUpdate
+                  ? 'bg-accent-soft text-accent'
+                  : 'bg-surface-muted text-ink-secondary'
+              "
+            >
+              {{
+                updateInfo?.hasUpdate
+                  ? `Доступна новая версия v${updateInfo?.latestVersion}`
+                  : `Текущая версия актуальна (v${updateInfo?.latestVersion})`
+              }}
+            </span>
+            <h3 id="update-modal-title" class="mt-1.5 font-display text-lg font-extrabold text-ink">
+              {{ updateInfo?.releaseName || 'Обновление Пухни' }}
+            </h3>
+          </div>
+          <button
+            type="button"
+            aria-label="Закрыть"
+            class="tactile shrink-0 rounded-full bg-surface-muted p-1.5 text-ink-secondary"
+            @click="updateDialogRef?.close()"
+          >
+            <X class="h-4 w-4" aria-hidden="true" />
+          </button>
+        </div>
 
-      <div class="mt-4 flex flex-col gap-2">
-        <button
-          type="button"
-          class="tactile flex w-full items-center justify-center gap-2 rounded-2xl bg-accent px-4 py-3 text-xs font-semibold text-accent-contrast shadow-organic-sm"
-          @click="downloadAndInstallApk"
-        >
-          <ExternalLink class="h-4 w-4 shrink-0" aria-hidden="true" />
-          <span>Скачать и установить обновление</span>
-        </button>
-        <button
-          type="button"
-          class="tactile w-full rounded-2xl border border-hairline bg-canvas py-2.5 text-xs font-semibold text-ink-secondary"
-          @click="updateDialogRef?.close()"
-        >
-          Позже
-        </button>
+        <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-4 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
+          <div
+            v-if="updateInfo?.changelog"
+            class="max-h-48 overflow-y-auto whitespace-pre-wrap rounded-2xl bg-canvas p-3 text-xs leading-relaxed text-ink-secondary"
+          >
+            {{ updateInfo.changelog }}
+          </div>
+
+          <div class="mt-4 flex flex-col gap-2">
+            <a
+              v-if="updateInfo?.apkDownloadUrl"
+              :href="updateInfo.apkDownloadUrl"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="tactile flex w-full items-center justify-center gap-2 rounded-2xl bg-accent px-4 py-3 text-xs font-semibold text-accent-contrast shadow-organic-sm"
+              @click="openApkExternally"
+            >
+              <ExternalLink class="h-4 w-4 shrink-0" aria-hidden="true" />
+              <span>
+                {{
+                  updateInfo.hasUpdate
+                    ? 'Скачать и установить обновление'
+                    : 'Скачать последний APK'
+                }}
+              </span>
+            </a>
+            <button
+              type="button"
+              class="tactile w-full rounded-2xl border border-hairline bg-canvas py-2.5 text-xs font-semibold text-ink-secondary"
+              @click="updateDialogRef?.close()"
+            >
+              Закрыть
+            </button>
+          </div>
+        </div>
       </div>
     </dialog>
 

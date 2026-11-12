@@ -135,6 +135,11 @@ export type OfflineQueueAction =
     }
   | {
       id: string;
+      type: 'delete_note';
+      note_id: string;
+    }
+  | {
+      id: string;
       type: 'toggle_shopping';
       item_id: string;
       is_checked: boolean;

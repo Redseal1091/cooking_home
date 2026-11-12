@@ -44,6 +44,12 @@ function handleClose() {
   emit('close');
 }
 
+function onBackdropClick(event: MouseEvent) {
+  if (event.target === event.currentTarget) {
+    dialogRef.value?.close();
+  }
+}
+
 const parsedValue = computed(() => {
   const num = Number.parseFloat(availableAmount.value.replace(',', '.'));
   return Number.isNaN(num) || num <= 0 ? null : num;
@@ -65,35 +71,42 @@ function handleSubmit() {
   <dialog
     ref="dialogRef"
     aria-labelledby="reverse-calc-title"
-    class="m-auto w-[calc(100%-2rem)] max-w-sm rounded-4xl border border-hairline bg-surface p-6 text-ink shadow-organic-lg"
+    class="open:flex fixed inset-0 m-0 h-dvh max-h-none w-full max-w-none flex-col items-center justify-end overflow-hidden border-0 bg-transparent p-0 pt-[max(18dvh,calc(env(safe-area-inset-top)+3rem))] sm:justify-center sm:px-4 sm:pb-6"
     @close="handleClose"
+    @click="onBackdropClick"
   >
-    <div class="flex items-start justify-between gap-3">
-      <div class="flex min-w-0 flex-1 items-center gap-2.5">
-        <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-accent-soft text-accent">
-          <Scale class="h-5 w-5" aria-hidden="true" />
+    <div
+      class="flex max-h-[80dvh] w-full max-w-sm flex-col overflow-hidden rounded-t-3xl border border-b-0 border-hairline bg-surface text-ink shadow-organic-lg sm:rounded-3xl sm:border-b"
+    >
+      <div class="flex shrink-0 items-start justify-between gap-3 border-b border-hairline px-5 py-4">
+        <div class="flex min-w-0 flex-1 items-center gap-2.5">
+          <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-accent-soft text-accent">
+            <Scale class="h-5 w-5" aria-hidden="true" />
+          </div>
+          <div class="min-w-0 flex-1">
+            <h3 id="reverse-calc-title" class="font-display text-base font-bold text-ink">
+              Пересчёт от остатков
+            </h3>
+            <p class="truncate text-xs text-ink-secondary">
+              {{ ingredient?.name }}
+            </p>
+          </div>
         </div>
-        <div class="min-w-0 flex-1">
-          <h3 id="reverse-calc-title" class="font-display text-base font-bold text-ink">
-            Пересчёт от остатков
-          </h3>
-          <p class="truncate text-xs text-ink-secondary">
-            {{ ingredient?.name }}
-          </p>
-        </div>
+
+        <button
+          type="button"
+          aria-label="Закрыть"
+          class="tactile shrink-0 rounded-full bg-surface-muted p-1.5 text-ink-secondary"
+          @click="dialogRef?.close()"
+        >
+          <X class="h-4 w-4" aria-hidden="true" />
+        </button>
       </div>
 
-      <button
-        type="button"
-        aria-label="Закрыть"
-        class="tactile shrink-0 rounded-full bg-surface-muted p-1.5 text-ink-secondary"
-        @click="dialogRef?.close()"
+      <form
+        class="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-5 py-4 pb-[max(1.25rem,env(safe-area-inset-bottom))]"
+        @submit.prevent="handleSubmit"
       >
-        <X class="h-4 w-4" aria-hidden="true" />
-      </button>
-    </div>
-
-    <form class="mt-4 space-y-4" @submit.prevent="handleSubmit">
       <div class="rounded-2xl bg-canvas/70 px-4 py-3 text-xs text-ink-secondary">
         По базовому рецепту нужно:
         <strong class="font-semibold text-ink tabular-nums">
@@ -143,5 +156,6 @@ function handleSubmit() {
         </button>
       </div>
     </form>
+    </div>
   </dialog>
 </template>

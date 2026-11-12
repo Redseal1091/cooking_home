@@ -68,17 +68,9 @@ function handleDialogClose() {
   emit('close');
 }
 
-function handleBackdropPointerDown(e: PointerEvent) {
-  const dialog = dialogRef.value;
-  if (!dialog || batchRunning.value) return;
-  const r = dialog.getBoundingClientRect();
-  if (
-    e.clientX < r.left ||
-    e.clientX > r.right ||
-    e.clientY < r.top ||
-    e.clientY > r.bottom
-  ) {
-    dialog.close();
+function onBackdropClick(event: MouseEvent) {
+  if (!batchRunning.value && event.target === event.currentTarget) {
+    dialogRef.value?.close();
   }
 }
 
@@ -211,7 +203,7 @@ function countSteps(draft: RecipeDraft): number {
     aria-labelledby="import-modal-title"
     class="m-auto max-h-[92dvh] w-[calc(100%-2rem)] max-w-2xl overflow-hidden rounded-4xl border border-hairline bg-surface p-0 text-ink shadow-organic-lg"
     @close="handleDialogClose"
-    @pointerdown="handleBackdropPointerDown"
+    @click="onBackdropClick"
   >
     <div class="flex max-h-[92dvh] flex-col">
       <!-- Шапка модального окна -->

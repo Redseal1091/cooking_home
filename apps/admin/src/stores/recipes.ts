@@ -1,11 +1,12 @@
 import { computed, ref } from 'vue';
 import { defineStore } from 'pinia';
 import type { RealtimeChannel } from '@supabase/supabase-js';
-import type {
-  Recipe,
-  RecipeSuggestion,
-  RecipeWithIngredients,
-  TipTapDocument,
+import {
+  normalizeIngredient,
+  type Recipe,
+  type RecipeSuggestion,
+  type RecipeWithIngredients,
+  type TipTapDocument,
 } from '@cookbook/shared';
 import { supabase } from '@/lib/supabase';
 
@@ -190,16 +191,31 @@ export const useRecipesStore = defineStore('recipes', () => {
     }
 
     const validIngredients = draft.ingredients
-      .filter((ing) => ing.name.trim().length > 0)
-      .map((ing, index) => ({
-        recipe_id: savedRecipe.id,
-        name: ing.name.trim(),
-        amount: ing.amount !== null && !Number.isNaN(ing.amount) ? Number(ing.amount) : null,
-        unit: ing.unit.trim() || 'г',
-        is_scalable: ing.is_scalable,
-        section_name: ing.section_name?.trim() || null,
-        order_index: index,
-      }));
+      .map((ing) => {
+        const normalized = normalizeIngredient(ing.name, ing.section_name);
+        return {
+          raw: ing,
+          name: normalized.name,
+          section_name: normalized.section_name,
+        };
+      })
+      .filter((item) => item.name.length > 0)
+      .map((item, index) => {
+        item.raw.name = item.name;
+        item.raw.section_name = item.section_name;
+        return {
+          recipe_id: savedRecipe.id,
+          name: item.name,
+          amount:
+            item.raw.amount !== null && !Number.isNaN(item.raw.amount)
+              ? Number(item.raw.amount)
+              : null,
+          unit: item.raw.unit.trim() || 'г',
+          is_scalable: item.raw.is_scalable,
+          section_name: item.section_name,
+          order_index: index,
+        };
+      });
 
     if (validIngredients.length > 0) {
       const { error: ingInsertErr } = await supabase

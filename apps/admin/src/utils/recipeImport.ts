@@ -1,6 +1,7 @@
 import {
   DEFAULT_RECIPE_CATEGORIES,
   INGREDIENT_UNITS,
+  normalizeIngredient,
   type TipTapDocument,
   type TipTapNode,
 } from '@cookbook/shared';
@@ -17,10 +18,10 @@ export const AI_PROMPT_TEMPLATE = `Ты — опытный шеф-повар и 
   "cook_time_min": 30,
   "base_servings": 4,
   "total_weight_g": 1200,
-  "calories": 1850,
-  "proteins": 110,
-  "fats": 75,
-  "carbs": 180,
+  "calories": 154,
+  "proteins": 12.5,
+  "fats": 6.2,
+  "carbs": 11.8,
   "ingredients": [
     { "name": "Куриное филе", "amount": 500, "unit": "г", "is_scalable": true, "section": "Для основы" },
     { "name": "Соль", "amount": 1, "unit": "по вкусу", "is_scalable": false, "section": "Для основы" }
@@ -32,7 +33,7 @@ export const AI_PROMPT_TEMPLATE = `Ты — опытный шеф-повар и 
 }
 
 Правила:
-1. КБЖУ (calories, proteins, fats, carbs) указывай СУММАРНО на весь рецепт (на все base_servings порций).
+1. Рассчитай КБЖУ (calories, proteins, fats, carbs) СТРОГО на 100 грамм готового блюда (не на порцию и не на весь объём).
 2. Доступные единицы unit: ${INGREDIENT_UNITS.join(', ')}.
 3. Для соли, перца и специй по вкусу ставь "is_scalable": false.
 4. Поле "section" в ингредиентах необязательное (используй, если рецепт делится на части, например "Для теста", "Для начинки", "Для соуса").
@@ -41,8 +42,8 @@ export const AI_PROMPT_TEMPLATE = `Ты — опытный шеф-повар и 
 Блюдо для генерации: [НАПИШИТЕ ЗДЕСЬ НАЗВАНИЕ ИЛИ ПРОДУКТЫ]`;
 
 export const CSV_EXAMPLE_CONTENT = `\uFEFFtitle;category;description;prep_time_min;cook_time_min;base_servings;total_weight_g;calories;proteins;fats;carbs;ingredients_list;steps_list
-Курица терияки с рисом;Основные блюда;Сочная курица в домашнем соусе терияки с рассыпчатым рисом;15;25;4;1100;1920;132;54;215;Курица:400:г:true | Рис басмати:250:г:true | Соевый соус:60:мл:true | Соль:1:по вкусу:false;Промойте рис и варите 15 мин под крышкой. | Нарежьте курицу и обжарьте 8 мин на сильном огне. | Влейте соус и тушите 5 мин до загустения.
-Сырники творожные классические;Завтраки;Нежные румяные сырники с ванилью на семейный завтрак;10;15;3;650;1240;78;46;125;Творог 5%:500:г:true | Яйцо:1:шт:true | Мука:3:ст.л.:true | Сахар:2:ст.л.:true | Соль:1:щепотка:false;Смешайте творог, яйцо, сахар и соль до однородности. | Сформируйте сырники и обваляйте в муке. | Жарьте по 4 мин с каждой стороны на слабом огне.`;
+Курица терияки с рисом;Основные блюда;Сочная курица в домашнем соусе терияки с рассыпчатым рисом;15;25;4;1100;175;12;4.9;19.5;Курица:400:г:true | Рис басмати:250:г:true | Соевый соус:60:мл:true | Соль:1:по вкусу:false;Промойте рис и варите 15 мин под крышкой. | Нарежьте курицу и обжарьте 8 мин на сильном огне. | Влейте соус и тушите 5 мин до загустения.
+Сырники творожные классические;Завтраки;Нежные румяные сырники с ванилью на семейный завтрак;10;15;3;650;191;12;7.1;19.2;Творог 5%:500:г:true | Яйцо:1:шт:true | Мука:3:ст.л.:true | Сахар:2:ст.л.:true | Соль:1:щепотка:false;Смешайте творог, яйцо, сахар и соль до однородности. | Сформируйте сырники и обваляйте в муке. | Жарьте по 4 мин с каждой стороны на слабом огне.`;
 
 interface RawIngredientInput {
   name?: unknown;
@@ -143,21 +144,23 @@ function normalizeRecipeObject(raw: RawRecipeInput): RecipeDraft {
   const ingredients: IngredientDraft[] = ingredientsRaw
     .map((item): IngredientDraft | null => {
       const ing = item as RawIngredientInput;
-      const name = typeof ing?.name === 'string' ? ing.name.trim() : '';
-      if (!name) return null;
+      const rawName = typeof ing?.name === 'string' ? ing.name.trim() : '';
+      if (!rawName) return null;
       const rawSection =
         typeof ing.section === 'string'
           ? ing.section.trim()
           : typeof ing.section_name === 'string'
             ? ing.section_name.trim()
             : '';
+      const normalized = normalizeIngredient(rawName, rawSection || null);
+      if (!normalized.name) return null;
       return {
         localId: crypto.randomUUID(),
-        name,
+        name: normalized.name,
         amount: toNumberOrNull(ing.amount),
         unit: typeof ing.unit === 'string' && ing.unit.trim() ? ing.unit.trim() : 'г',
         is_scalable: toBoolean(ing.is_scalable, true),
-        section_name: rawSection || null,
+        section_name: normalized.section_name,
       };
     })
     .filter((i): i is IngredientDraft => i !== null);
@@ -332,19 +335,21 @@ export function parseRecipesFromCsvText(csvText: string): RecipeDraft[] {
           .filter(Boolean)
           .map((chunk): IngredientDraft | null => {
             const parts = chunk.split(':').map((p) => p.trim());
-            const name = parts[0] ?? '';
-            if (!name) return null;
+            const rawName = parts[0] ?? '';
+            if (!rawName) return null;
             const amount = parts[1] !== undefined ? toNumberOrNull(parts[1]) : null;
             const unit = parts[2] || 'г';
             const isScalable = parts[3] !== undefined ? toBoolean(parts[3], true) : true;
-            const sectionName = parts[4]?.trim() || null;
+            const rawSection = parts[4]?.trim() || null;
+            const normalized = normalizeIngredient(rawName, rawSection);
+            if (!normalized.name) return null;
             return {
               localId: crypto.randomUUID(),
-              name,
+              name: normalized.name,
               amount,
               unit,
               is_scalable: isScalable,
-              section_name: sectionName,
+              section_name: normalized.section_name,
             };
           })
           .filter((i): i is IngredientDraft => i !== null)

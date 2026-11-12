@@ -12,8 +12,8 @@ import {
   X,
 } from 'lucide-vue-next';
 import {
-  calculateNutritionPerServing,
   DEFAULT_RECIPE_CATEGORIES,
+  normalizeIngredient,
   type RecipeWithIngredients,
 } from '@cookbook/shared';
 import { useAppStore } from '@/stores/app';
@@ -56,7 +56,7 @@ const suggestedIngredients = computed(() =>
 );
 
 function addPantryIngredient(raw?: string) {
-  const clean = (raw ?? pantryInput.value).trim();
+  const clean = normalizeIngredient(raw ?? pantryInput.value).name;
   if (!clean) return;
   if (!pantryIngredients.value.some((p) => p.toLowerCase() === clean.toLowerCase())) {
     pantryIngredients.value.push(clean);
@@ -87,7 +87,9 @@ const filteredRecipes = computed<RankedRecipe[]>(() => {
     if (q) {
       const inTitle = recipe.title.toLowerCase().includes(q);
       const inDesc = (recipe.description ?? '').toLowerCase().includes(q);
-      const inIng = recipe.ingredients.some((i) => i.name.toLowerCase().includes(q));
+      const inIng = recipe.ingredients.some((i) =>
+        normalizeIngredient(i.name).name.toLowerCase().includes(q),
+      );
       if (!inTitle && !inDesc && !inIng) continue;
     }
 
@@ -95,7 +97,7 @@ const filteredRecipes = computed<RankedRecipe[]>(() => {
     if (pantryTerms.length > 0) {
       for (const term of pantryTerms) {
         const hasMatch = recipe.ingredients.some((ing) =>
-          ing.name.toLowerCase().includes(term),
+          normalizeIngredient(ing.name).name.toLowerCase().includes(term),
         );
         if (hasMatch) matchedCount++;
       }
@@ -122,18 +124,18 @@ function getTotalMinutes(r: RecipeWithIngredients): number {
   return (r.prep_time_min || 0) + (r.cook_time_min || 0);
 }
 
-function getKcalPerServing(r: RecipeWithIngredients): number | null {
-  return calculateNutritionPerServing(r).calories;
+function getCaloriesPer100g(r: RecipeWithIngredients): number | null {
+  return r.calories !== null && r.calories !== undefined ? Math.round(r.calories) : null;
 }
 </script>
 
 <template>
   <div class="overflow-x-clip pb-28">
-    <!-- Шапка каталога -->
-    <header class="px-4 pb-3 pt-5 sm:px-5">
+    <!-- Закреплённая шапка каталога со стеклянным размытием под статус-бар -->
+    <header class="sticky top-0 z-20 border-b border-hairline/50 bg-canvas/80 px-4 pb-3 pt-[max(env(safe-area-inset-top),2rem)] backdrop-blur-xl sm:px-5">
       <div class="flex items-center justify-between gap-3">
         <div class="flex min-w-0 flex-1 items-center gap-3">
-          <div class="h-12 w-12 shrink-0 overflow-hidden rounded-2xl border border-hairline bg-[#FDF0D5] shadow-organic-sm">
+          <div class="h-11 w-11 shrink-0 overflow-hidden rounded-2xl border border-hairline bg-[#FDF0D5] shadow-organic-sm">
             <img
               src="/mascot.png"
               alt="Пухня"
@@ -160,9 +162,11 @@ function getKcalPerServing(r: RecipeWithIngredients): number | null {
           Офлайн
         </span>
       </div>
+    </header>
 
-      <!-- Поиск + кнопка фильтра по холодильнику -->
-      <div class="mt-4 flex items-center gap-2">
+    <!-- Поиск и фильтр по холодильнику -->
+    <div class="px-4 pb-2 pt-3 sm:px-5">
+      <div class="flex items-center gap-2">
         <div class="relative min-w-0 flex-1">
           <Search
             class="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-tertiary"
@@ -265,7 +269,7 @@ function getKcalPerServing(r: RecipeWithIngredients): number | null {
           </div>
         </div>
       </div>
-    </header>
+    </div>
 
     <!-- Горизонтальные pill-фильтры категорий -->
     <div class="no-scrollbar touch-pan-xy flex gap-2 overflow-x-auto px-5 py-2" role="tablist" aria-label="Категории рецептов">
@@ -342,11 +346,11 @@ function getKcalPerServing(r: RecipeWithIngredients): number | null {
                 {{ recipe.category }}
               </span>
               <span
-                v-if="getKcalPerServing(recipe) !== null"
+                v-if="getCaloriesPer100g(recipe) !== null"
                 class="glass-pill inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold tabular-nums"
               >
                 <Flame class="h-3 w-3" aria-hidden="true" />
-                {{ getKcalPerServing(recipe) }} ккал
+                {{ getCaloriesPer100g(recipe) }} ккал / 100 г
               </span>
             </div>
 
@@ -409,9 +413,9 @@ function getKcalPerServing(r: RecipeWithIngredients): number | null {
               </h3>
               <div class="mt-1.5 flex flex-wrap items-center gap-2 text-[11px] text-ink-secondary tabular-nums">
                 <span>{{ recipe.base_servings }} порц.</span>
-                <template v-if="getKcalPerServing(recipe) !== null">
+                <template v-if="getCaloriesPer100g(recipe) !== null">
                   <span>·</span>
-                  <span>{{ getKcalPerServing(recipe) }} ккал</span>
+                  <span>{{ getCaloriesPer100g(recipe) }} ккал / 100 г</span>
                 </template>
                 <template v-if="pantryIngredients.length > 0">
                   <span>·</span>

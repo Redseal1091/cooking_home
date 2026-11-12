@@ -17,6 +17,7 @@ import {
   DEFAULT_INGREDIENT_SECTIONS,
   DEFAULT_RECIPE_CATEGORIES,
   INGREDIENT_UNITS,
+  normalizeIngredient,
   type SuggestedIngredientInput,
   type TipTapDocument,
 } from '@cookbook/shared';
@@ -139,6 +140,12 @@ function handleDialogClose() {
   appStore.removeBackHandler('suggest-recipe-modal');
   if (dialogRef.value) dialogRef.value.returnValue = '';
   emit('close');
+}
+
+function onBackdropClick(event: MouseEvent) {
+  if (!submitting.value && event.target === event.currentTarget) {
+    dialogRef.value?.close();
+  }
 }
 
 function addIngredient(sectionName = '') {
@@ -322,13 +329,21 @@ async function handleSubmit() {
   try {
     const preparedIngredients: SuggestedIngredientInput[] = isFullMode.value
       ? ingredients.value
-          .filter((row) => row.name.trim().length > 0)
-          .map((row) => ({
-            name: row.name.trim(),
-            amount: parseOptionalNumber(row.amount),
-            unit: row.unit.trim() || 'г',
-            is_scalable: row.is_scalable,
-            section_name: row.section_name.trim() || null,
+          .map((row) => {
+            const normalized = normalizeIngredient(row.name, row.section_name);
+            return {
+              row,
+              name: normalized.name,
+              section_name: normalized.section_name,
+            };
+          })
+          .filter((item) => item.name.length > 0)
+          .map((item) => ({
+            name: item.name,
+            amount: parseOptionalNumber(item.row.amount),
+            unit: item.row.unit.trim() || 'г',
+            is_scalable: item.row.is_scalable,
+            section_name: item.section_name,
           }))
       : [];
 
@@ -382,16 +397,19 @@ async function handleSubmit() {
   <dialog
     ref="dialogRef"
     aria-labelledby="suggest-modal-title"
-    class="m-auto max-h-[92dvh] w-[calc(100%-1.5rem)] max-w-lg overflow-hidden rounded-4xl border border-hairline bg-surface p-0 text-ink shadow-organic-lg"
+    class="open:flex fixed inset-0 m-0 h-dvh max-h-none w-full max-w-none flex-col items-center justify-end overflow-hidden border-0 bg-transparent p-0 pt-[max(18dvh,calc(env(safe-area-inset-top)+3rem))] sm:justify-center sm:px-4 sm:pb-6"
     @close="handleDialogClose"
+    @click="onBackdropClick"
   >
     <datalist id="mobile-ingredient-sections">
       <option v-for="sec in sectionSuggestions" :key="sec" :value="sec" />
     </datalist>
 
-    <div class="flex max-h-[92dvh] flex-col overflow-hidden">
-      <!-- Шапка модалки -->
-      <div class="flex items-center justify-between gap-3 border-b border-hairline px-5 py-4">
+    <div
+      class="flex max-h-[80dvh] w-full max-w-lg flex-col overflow-hidden rounded-t-3xl border border-b-0 border-hairline bg-surface text-ink shadow-organic-lg sm:rounded-3xl sm:border-b"
+    >
+      <!-- Зафиксированная сверху шапка модалки -->
+      <div class="flex shrink-0 items-center justify-between gap-3 border-b border-hairline px-5 py-4">
         <div class="flex min-w-0 items-center gap-2.5">
           <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-accent-soft text-accent">
             <Sparkles class="h-4 w-4" aria-hidden="true" />
@@ -417,7 +435,10 @@ async function handleSubmit() {
       </div>
 
       <!-- Прокручиваемое тело формы -->
-      <form class="flex-1 space-y-4 overflow-y-auto px-5 py-4" @submit.prevent="handleSubmit">
+      <form
+        class="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-5 py-4 pb-[max(1.25rem,env(safe-area-inset-bottom))]"
+        @submit.prevent="handleSubmit"
+      >
         <div
           v-if="errorMsg"
           role="alert"
@@ -594,7 +615,7 @@ async function handleSubmit() {
 
           <!-- КБЖУ -->
           <div>
-            <p class="mb-1.5 text-xs font-semibold text-ink">КБЖУ на весь рецепт (опционально)</p>
+            <p class="mb-1.5 text-xs font-semibold text-ink">КБЖУ на 100 г готового блюда (опционально)</p>
             <div class="grid grid-cols-4 gap-2">
               <input
                 v-model="calories"

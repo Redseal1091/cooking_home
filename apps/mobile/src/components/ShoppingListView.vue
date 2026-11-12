@@ -2,8 +2,10 @@
 import { computed, ref, watch } from 'vue';
 import { Share } from '@capacitor/share';
 import {
+  AlertTriangle,
   Check,
   CheckCircle2,
+  CheckSquare,
   Copy,
   Minus,
   Pencil,
@@ -11,6 +13,7 @@ import {
   Radio,
   Share2,
   ShoppingBag,
+  Square,
   Trash2,
   WifiOff,
   X,
@@ -43,6 +46,41 @@ function showToast(msg: string) {
 const shareModalOpen = ref(false);
 const shareDialogRef = ref<HTMLDialogElement | null>(null);
 const shareMode = ref<'unchecked' | 'all'>('unchecked');
+
+// Состояние модалки подтверждения полной очистки
+const clearAllModalOpen = ref(false);
+const clearAllDialogRef = ref<HTMLDialogElement | null>(null);
+
+watch(clearAllModalOpen, (isOpen) => {
+  const dialog = clearAllDialogRef.value;
+  if (!dialog) return;
+  if (isOpen) {
+    if (!dialog.open) dialog.showModal();
+    appStore.pushBackHandler('clear-all-shopping-list', () => {
+      clearAllDialogRef.value?.close();
+    });
+  } else {
+    appStore.removeBackHandler('clear-all-shopping-list');
+    if (dialog.open) dialog.close();
+  }
+});
+
+function closeClearAllModal() {
+  appStore.removeBackHandler('clear-all-shopping-list');
+  clearAllModalOpen.value = false;
+}
+
+function confirmClearAll() {
+  void shoppingStore.clearAll();
+  clearAllDialogRef.value?.close();
+  showToast('Список покупок очищен');
+}
+
+function onDialogBackdropClick(event: MouseEvent, dialog: HTMLDialogElement | null) {
+  if (event.target === event.currentTarget) {
+    dialog?.close();
+  }
+}
 
 // Состояние модалки редактирования пункта
 const editingItem = ref<ShoppingListItem | null>(null);
@@ -188,7 +226,8 @@ async function handleCopyText() {
 
 <template>
   <div class="overflow-x-clip pb-28">
-    <header class="px-4 pb-4 pt-5 sm:px-5">
+    <!-- Закреплённая шапка со стеклянным размытием под статус-бар -->
+    <header class="sticky top-0 z-20 border-b border-hairline/50 bg-canvas/80 px-4 pb-3 pt-[max(env(safe-area-inset-top),2rem)] backdrop-blur-xl sm:px-5">
       <div class="flex items-start justify-between gap-2">
         <div class="min-w-0 flex-1">
           <p class="text-xs font-medium uppercase tracking-wider text-accent">
@@ -226,10 +265,12 @@ async function handleCopyText() {
           </span>
         </div>
       </div>
+    </header>
 
+    <div class="px-4 pb-4 pt-3 sm:px-5">
       <!-- Быстрое добавление продукта (резиновая сетка для 320px+) -->
       <form
-        class="organic-card mt-4 space-y-2.5 rounded-3xl border border-hairline bg-surface p-3.5 shadow-organic-sm"
+        class="organic-card space-y-2.5 rounded-3xl border border-hairline bg-surface p-3.5 shadow-organic-sm"
         @submit.prevent="handleAdd"
       >
         <input
@@ -268,7 +309,7 @@ async function handleCopyText() {
           </button>
         </div>
       </form>
-    </header>
+    </div>
 
     <main class="px-4 sm:px-5">
       <div
@@ -283,18 +324,45 @@ async function handleCopyText() {
       </div>
 
       <template v-else>
-        <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <span class="text-xs font-medium text-ink-secondary tabular-nums">
-            Осталось купить: {{ shoppingStore.uncheckedCount }}
-          </span>
-          <button
-            v-if="shoppingStore.items.some((i) => i.is_checked)"
-            type="button"
-            class="tactile shrink-0 text-xs font-semibold text-danger"
-            @click="shoppingStore.clearChecked()"
-          >
-            Удалить купленное
-          </button>
+        <!-- Панель массовых действий -->
+        <div class="mb-3 space-y-2 rounded-3xl border border-hairline bg-surface/80 p-3 shadow-organic-sm">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <span class="text-xs font-medium text-ink-secondary tabular-nums">
+              Осталось купить: <strong class="font-bold text-ink">{{ shoppingStore.uncheckedCount }}</strong> из {{ shoppingStore.items.length }}
+            </span>
+
+            <button
+              type="button"
+              class="tactile inline-flex shrink-0 items-center gap-1.5 rounded-full border border-hairline bg-canvas px-3 py-1.5 text-xs font-semibold text-ink hover:border-accent hover:text-accent"
+              @click="shoppingStore.toggleAllChecked()"
+            >
+              <CheckSquare v-if="shoppingStore.allChecked" class="h-3.5 w-3.5 text-accent" aria-hidden="true" />
+              <Square v-else class="h-3.5 w-3.5 text-ink-secondary" aria-hidden="true" />
+              <span>{{ shoppingStore.allChecked ? 'Снять отметки' : 'Отметить все' }}</span>
+            </button>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-2">
+            <button
+              v-if="shoppingStore.checkedCount > 0"
+              type="button"
+              class="tactile inline-flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-2xl bg-danger/10 px-3 py-2 text-xs font-semibold text-danger"
+              @click="shoppingStore.clearChecked()"
+            >
+              <Trash2 class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              <span class="truncate">Удалить купленные ({{ shoppingStore.checkedCount }})</span>
+            </button>
+
+            <button
+              type="button"
+              class="tactile inline-flex shrink-0 items-center justify-center gap-1.5 rounded-2xl border border-hairline bg-canvas px-3 py-2 text-xs font-semibold text-ink-secondary hover:border-danger/40 hover:text-danger"
+              :class="{ 'flex-1': shoppingStore.checkedCount === 0 }"
+              @click="clearAllModalOpen = true"
+            >
+              <Trash2 class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              <span>Очистить всё</span>
+            </button>
+          </div>
         </div>
 
         <ul class="space-y-2.5">
@@ -382,162 +450,232 @@ async function handleCopyText() {
       </template>
     </main>
 
-    <!-- Модалка редактирования продукта -->
+    <!-- Модалка редактирования пункта -->
     <dialog
       ref="editDialogRef"
       aria-labelledby="edit-item-title"
-      class="m-auto w-[calc(100%-2rem)] max-w-sm rounded-4xl border border-hairline bg-surface p-5 text-ink shadow-organic-lg"
+      class="open:flex fixed inset-0 m-0 h-dvh max-h-none w-full max-w-none flex-col items-center justify-end overflow-hidden border-0 bg-transparent p-0 pt-[max(18dvh,calc(env(safe-area-inset-top)+3rem))] sm:justify-center sm:px-4 sm:pb-6"
       @close="closeEditModal"
+      @click="onDialogBackdropClick($event, editDialogRef)"
     >
-      <div class="flex items-center justify-between gap-2">
-        <h3 id="edit-item-title" class="font-display text-base font-bold text-ink">
-          Изменить пункт
-        </h3>
-        <button
-          type="button"
-          aria-label="Закрыть"
-          class="tactile shrink-0 rounded-full bg-surface-muted p-1.5 text-ink-secondary"
-          @click="editDialogRef?.close()"
-        >
-          <X class="h-4 w-4" aria-hidden="true" />
-        </button>
-      </div>
-
-      <form class="mt-4 space-y-3" @submit.prevent="saveEditModal">
-        <div>
-          <label class="mb-1 block text-xs font-semibold text-ink">Название</label>
-          <input
-            v-model="editName"
-            type="text"
-            required
-            class="w-full rounded-2xl border border-hairline bg-canvas px-3.5 py-2.5 text-sm text-ink focus:border-accent focus:outline-none"
-          />
-        </div>
-
-        <div class="grid grid-cols-2 gap-2.5">
-          <div>
-            <label class="mb-1 block text-xs font-semibold text-ink">Количество</label>
-            <input
-              v-model="editAmount"
-              type="number"
-              min="0.01"
-              step="any"
-              inputmode="decimal"
-              required
-              class="w-full rounded-2xl border border-hairline bg-canvas px-3.5 py-2.5 text-sm font-bold text-ink tabular-nums focus:border-accent focus:outline-none"
-            />
-          </div>
-          <div>
-            <label class="mb-1 block text-xs font-semibold text-ink">Единица</label>
-            <select
-              v-model="editUnit"
-              class="w-full rounded-2xl border border-hairline bg-canvas px-3 py-2.5 text-sm text-ink focus:border-accent focus:outline-none"
-            >
-              <option v-for="u in INGREDIENT_UNITS" :key="u" :value="u">
-                {{ u }}
-              </option>
-            </select>
-          </div>
-        </div>
-
-        <div class="flex gap-2 pt-2">
+      <div
+        class="flex max-h-[80dvh] w-full max-w-sm flex-col overflow-hidden rounded-t-3xl border border-b-0 border-hairline bg-surface text-ink shadow-organic-lg sm:rounded-3xl sm:border-b"
+      >
+        <div class="flex shrink-0 items-center justify-between gap-2 border-b border-hairline px-5 py-4">
+          <h3 id="edit-item-title" class="font-display text-base font-bold text-ink">
+            Изменить пункт
+          </h3>
           <button
             type="button"
-            class="tactile flex-1 rounded-2xl border border-hairline bg-canvas py-2.5 text-xs font-semibold text-ink-secondary"
+            aria-label="Закрыть"
+            class="tactile shrink-0 rounded-full bg-surface-muted p-1.5 text-ink-secondary"
             @click="editDialogRef?.close()"
           >
-            Отмена
-          </button>
-          <button
-            type="submit"
-            class="tactile flex-1 rounded-2xl bg-accent py-2.5 text-xs font-semibold text-accent-contrast shadow-organic-sm"
-          >
-            Сохранить
+            <X class="h-4 w-4" aria-hidden="true" />
           </button>
         </div>
-      </form>
+
+        <form
+          class="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-5 py-4 pb-[max(1.25rem,env(safe-area-inset-bottom))]"
+          @submit.prevent="saveEditModal"
+        >
+          <div>
+            <label class="mb-1 block text-xs font-semibold text-ink">Название</label>
+            <input
+              v-model="editName"
+              type="text"
+              required
+              class="w-full rounded-2xl border border-hairline bg-canvas px-3.5 py-2.5 text-sm text-ink focus:border-accent focus:outline-none"
+            />
+          </div>
+
+          <div class="grid grid-cols-2 gap-2.5">
+            <div>
+              <label class="mb-1 block text-xs font-semibold text-ink">Количество</label>
+              <input
+                v-model="editAmount"
+                type="number"
+                min="0.01"
+                step="any"
+                inputmode="decimal"
+                required
+                class="w-full rounded-2xl border border-hairline bg-canvas px-3.5 py-2.5 text-sm font-bold text-ink tabular-nums focus:border-accent focus:outline-none"
+              />
+            </div>
+            <div>
+              <label class="mb-1 block text-xs font-semibold text-ink">Единица</label>
+              <select
+                v-model="editUnit"
+                class="w-full rounded-2xl border border-hairline bg-canvas px-3 py-2.5 text-sm text-ink focus:border-accent focus:outline-none"
+              >
+                <option v-for="u in INGREDIENT_UNITS" :key="u" :value="u">
+                  {{ u }}
+                </option>
+              </select>
+            </div>
+          </div>
+
+          <div class="flex gap-2 pt-2">
+            <button
+              type="button"
+              class="tactile flex-1 rounded-2xl border border-hairline bg-canvas py-2.5 text-xs font-semibold text-ink-secondary"
+              @click="editDialogRef?.close()"
+            >
+              Отмена
+            </button>
+            <button
+              type="submit"
+              class="tactile flex-1 rounded-2xl bg-accent py-2.5 text-xs font-semibold text-accent-contrast shadow-organic-sm"
+            >
+              Сохранить
+            </button>
+          </div>
+        </form>
+      </div>
+    </dialog>
+
+    <!-- Модалка подтверждения полной очистки списка -->
+    <dialog
+      ref="clearAllDialogRef"
+      aria-labelledby="clear-all-title"
+      class="open:flex fixed inset-0 m-0 h-dvh max-h-none w-full max-w-none flex-col items-center justify-end overflow-hidden border-0 bg-transparent p-0 pt-[max(18dvh,calc(env(safe-area-inset-top)+3rem))] sm:justify-center sm:px-4 sm:pb-6"
+      @close="closeClearAllModal"
+      @click="onDialogBackdropClick($event, clearAllDialogRef)"
+    >
+      <div
+        class="flex max-h-[80dvh] w-full max-w-sm flex-col overflow-hidden rounded-t-3xl border border-b-0 border-hairline bg-surface text-ink shadow-organic-lg sm:rounded-3xl sm:border-b"
+      >
+        <div class="flex shrink-0 items-center justify-between gap-3 border-b border-hairline px-5 py-4">
+          <div class="flex min-w-0 items-center gap-2.5">
+            <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-danger/10 text-danger">
+              <AlertTriangle class="h-4 w-4" aria-hidden="true" />
+            </div>
+            <h3 id="clear-all-title" class="truncate font-display text-base font-bold text-ink">
+              Очистить весь список?
+            </h3>
+          </div>
+          <button
+            type="button"
+            aria-label="Закрыть"
+            class="tactile shrink-0 rounded-full bg-surface-muted p-1.5 text-ink-secondary"
+            @click="clearAllDialogRef?.close()"
+          >
+            <X class="h-4 w-4" aria-hidden="true" />
+          </button>
+        </div>
+
+        <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-4 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
+          <p class="text-xs leading-relaxed text-ink-secondary">
+            Все продукты ({{ shoppingStore.items.length }}) будут удалены из общего семейного списка покупок.
+          </p>
+
+          <div class="mt-4 flex gap-2">
+            <button
+              type="button"
+              class="tactile flex-1 rounded-2xl border border-hairline bg-canvas py-2.5 text-xs font-semibold text-ink"
+              @click="clearAllDialogRef?.close()"
+            >
+              Отмена
+            </button>
+            <button
+              type="button"
+              class="tactile flex-1 rounded-2xl bg-danger py-2.5 text-xs font-semibold text-white shadow-organic-sm"
+              @click="confirmClearAll"
+            >
+              Очистить всё
+            </button>
+          </div>
+        </div>
+      </div>
     </dialog>
 
     <!-- Модалка «Поделиться списком покупок» -->
     <dialog
       ref="shareDialogRef"
       aria-labelledby="share-list-title"
-      class="m-auto w-[calc(100%-2rem)] max-w-sm rounded-4xl border border-hairline bg-surface p-5 text-ink shadow-organic-lg"
+      class="open:flex fixed inset-0 m-0 h-dvh max-h-none w-full max-w-none flex-col items-center justify-end overflow-hidden border-0 bg-transparent p-0 pt-[max(18dvh,calc(env(safe-area-inset-top)+3rem))] sm:justify-center sm:px-4 sm:pb-6"
       @close="closeShareModal"
+      @click="onDialogBackdropClick($event, shareDialogRef)"
     >
-      <div class="flex items-center justify-between gap-2">
-        <h3 id="share-list-title" class="font-display text-base font-bold text-ink">
-          Поделиться списком
-        </h3>
-        <button
-          type="button"
-          aria-label="Закрыть"
-          class="tactile shrink-0 rounded-full bg-surface-muted p-1.5 text-ink-secondary"
-          @click="shareDialogRef?.close()"
-        >
-          <X class="h-4 w-4" aria-hidden="true" />
-        </button>
-      </div>
-
-      <div class="mt-3 grid grid-cols-2 gap-2">
-        <button
-          type="button"
-          class="tactile rounded-2xl border px-3 py-2 text-xs font-semibold transition-colors"
-          :class="
-            shareMode === 'unchecked'
-              ? 'border-accent bg-accent-soft text-accent'
-              : 'border-hairline bg-canvas text-ink-secondary'
-          "
-          @click="shareMode = 'unchecked'"
-        >
-          Некупленное ({{ shoppingStore.uncheckedCount }})
-        </button>
-        <button
-          type="button"
-          class="tactile rounded-2xl border px-3 py-2 text-xs font-semibold transition-colors"
-          :class="
-            shareMode === 'all'
-              ? 'border-accent bg-accent-soft text-accent'
-              : 'border-hairline bg-canvas text-ink-secondary'
-          "
-          @click="shareMode = 'all'"
-        >
-          Весь список ({{ shoppingStore.items.length }})
-        </button>
-      </div>
-
       <div
-        v-if="itemsToShare.length === 0"
-        class="mt-3 rounded-2xl border border-dashed border-hairline p-4 text-center text-xs text-ink-secondary"
+        class="flex max-h-[80dvh] w-full max-w-sm flex-col overflow-hidden rounded-t-3xl border border-b-0 border-hairline bg-surface text-ink shadow-organic-lg sm:rounded-3xl sm:border-b"
       >
-        В выбранном варианте нет продуктов. Переключитесь на «Весь список».
-      </div>
+        <div class="flex shrink-0 items-center justify-between gap-2 border-b border-hairline px-5 py-4">
+          <h3 id="share-list-title" class="font-display text-base font-bold text-ink">
+            Поделиться списком
+          </h3>
+          <button
+            type="button"
+            aria-label="Закрыть"
+            class="tactile shrink-0 rounded-full bg-surface-muted p-1.5 text-ink-secondary"
+            @click="shareDialogRef?.close()"
+          >
+            <X class="h-4 w-4" aria-hidden="true" />
+          </button>
+        </div>
 
-      <pre
-        v-else
-        class="mt-3 max-h-48 overflow-y-auto whitespace-pre-wrap break-words rounded-2xl bg-canvas p-3 font-sans text-xs leading-relaxed text-ink-secondary"
-      >{{ formattedShareText }}</pre>
+        <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-4 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
+          <div class="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              class="tactile rounded-2xl border px-3 py-2 text-xs font-semibold transition-colors"
+              :class="
+                shareMode === 'unchecked'
+                  ? 'border-accent bg-accent-soft text-accent'
+                  : 'border-hairline bg-canvas text-ink-secondary'
+              "
+              @click="shareMode = 'unchecked'"
+            >
+              Некупленное ({{ shoppingStore.uncheckedCount }})
+            </button>
+            <button
+              type="button"
+              class="tactile rounded-2xl border px-3 py-2 text-xs font-semibold transition-colors"
+              :class="
+                shareMode === 'all'
+                  ? 'border-accent bg-accent-soft text-accent'
+                  : 'border-hairline bg-canvas text-ink-secondary'
+              "
+              @click="shareMode = 'all'"
+            >
+              Весь список ({{ shoppingStore.items.length }})
+            </button>
+          </div>
 
-      <div class="mt-4 flex flex-col gap-2">
-        <button
-          type="button"
-          :disabled="itemsToShare.length === 0"
-          class="tactile flex w-full items-center justify-center gap-2 rounded-2xl bg-accent px-4 py-3 text-xs font-semibold text-accent-contrast shadow-organic-sm disabled:opacity-50"
-          @click="handleShareNow"
-        >
-          <Share2 class="h-4 w-4 shrink-0" aria-hidden="true" />
-          <span>Отправить в мессенджер</span>
-        </button>
+          <div
+            v-if="itemsToShare.length === 0"
+            class="mt-3 rounded-2xl border border-dashed border-hairline p-4 text-center text-xs text-ink-secondary"
+          >
+            В выбранном варианте нет продуктов. Переключитесь на «Весь список».
+          </div>
 
-        <button
-          type="button"
-          :disabled="itemsToShare.length === 0"
-          class="tactile flex w-full items-center justify-center gap-2 rounded-2xl border border-hairline bg-canvas px-4 py-2.5 text-xs font-semibold text-ink disabled:opacity-50"
-          @click="handleCopyText"
-        >
-          <Copy class="h-4 w-4 shrink-0" aria-hidden="true" />
-          <span>Скопировать текст</span>
-        </button>
+          <pre
+            v-else
+            class="mt-3 max-h-48 overflow-y-auto whitespace-pre-wrap break-words rounded-2xl bg-canvas p-3 font-sans text-xs leading-relaxed text-ink-secondary"
+          >{{ formattedShareText }}</pre>
+
+          <div class="mt-4 flex flex-col gap-2">
+            <button
+              type="button"
+              :disabled="itemsToShare.length === 0"
+              class="tactile flex w-full items-center justify-center gap-2 rounded-2xl bg-accent px-4 py-3 text-xs font-semibold text-accent-contrast shadow-organic-sm disabled:opacity-50"
+              @click="handleShareNow"
+            >
+              <Share2 class="h-4 w-4 shrink-0" aria-hidden="true" />
+              <span>Отправить в мессенджер</span>
+            </button>
+
+            <button
+              type="button"
+              :disabled="itemsToShare.length === 0"
+              class="tactile flex w-full items-center justify-center gap-2 rounded-2xl border border-hairline bg-canvas px-4 py-2.5 text-xs font-semibold text-ink disabled:opacity-50"
+              @click="handleCopyText"
+            >
+              <Copy class="h-4 w-4 shrink-0" aria-hidden="true" />
+              <span>Скопировать текст</span>
+            </button>
+          </div>
+        </div>
       </div>
     </dialog>
 

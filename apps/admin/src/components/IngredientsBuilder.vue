@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { ArrowDown, ArrowUp, FolderPlus, Layers, Plus, Trash2, X } from 'lucide-vue-next';
-import { DEFAULT_INGREDIENT_SECTIONS, INGREDIENT_UNITS } from '@cookbook/shared';
+import { DEFAULT_INGREDIENT_SECTIONS, INGREDIENT_UNITS, normalizeIngredient } from '@cookbook/shared';
 import type { IngredientDraft } from '@/stores/recipes';
 
 const ingredients = defineModel<IngredientDraft[]>({ required: true });
@@ -64,6 +64,15 @@ function updateSection(item: IngredientDraft, event: Event) {
   const val = (event.target as HTMLInputElement).value.trim();
   item.section_name = val || null;
   if (val) lastActiveSection.value = val;
+}
+
+function normalizeRowName(item: IngredientDraft) {
+  const normalized = normalizeIngredient(item.name, item.section_name);
+  item.name = normalized.name;
+  item.section_name = normalized.section_name;
+  if (normalized.section_name) {
+    lastActiveSection.value = normalized.section_name;
+  }
 }
 
 function shouldShowSectionHeader(index: number): boolean {
@@ -216,6 +225,7 @@ function shouldShowSectionHeader(index: number): boolean {
               placeholder="Например: Куриное филе"
               :aria-label="`Название ингредиента ${index + 1}`"
               class="w-full rounded-xl border border-hairline bg-surface px-3 py-2 text-sm text-ink placeholder:text-ink-tertiary focus:border-accent focus:outline-none"
+              @blur="normalizeRowName(item)"
             />
           </div>
 

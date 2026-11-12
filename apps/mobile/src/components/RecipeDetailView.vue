@@ -14,11 +14,11 @@ import {
   ShoppingBasket,
   Sun,
   Timer,
+  Trash2,
   Users,
 } from 'lucide-vue-next';
 import {
-  calculateNutritionPerServing,
-  calculateScaledTotalNutrition,
+  calculateDishCaloriesFrom100g,
   formatAmount,
   getScaleFactorByServings,
   groupScaledIngredientsBySection,
@@ -76,9 +76,8 @@ const groupedIngredients = computed(() =>
   groupScaledIngredientsBySection(scaledIngredients.value),
 );
 
-const nutritionPerServing = computed(() => calculateNutritionPerServing(props.recipe));
-const nutritionScaledTotal = computed(() =>
-  calculateScaledTotalNutrition(props.recipe, scaleFactor.value),
+const wholeDishCalories = computed(() =>
+  calculateDishCaloriesFrom100g(props.recipe.calories, props.recipe.total_weight_g, scaleFactor.value),
 );
 
 const recipeNotes = computed(() => recipesStore.notesByRecipe[props.recipe.id] ?? []);
@@ -188,48 +187,68 @@ function formatNoteDate(iso: string): string {
 
 <template>
   <div class="overflow-x-clip pb-32">
-    <!-- Медиа-шапка -->
-    <div class="relative aspect-[4/3] max-h-[380px] w-full bg-surface-muted">
+    <!-- Edge-to-Edge Blurred Ambient Header (вплотную к верхнему краю под прозрачным статус-баром) -->
+    <div class="relative aspect-[4/3] min-h-[320px] max-h-[420px] w-full overflow-hidden bg-[#121613]">
+      <!-- Размытая ambient-подложка из дубля фото -->
+      <div
+        v-if="recipe.cover_url"
+        aria-hidden="true"
+        class="pointer-events-none absolute inset-0 overflow-hidden"
+      >
+        <CachedImage
+          :src="recipe.cover_url"
+          alt=""
+          img-class="h-full w-full scale-125 object-cover opacity-70 blur-2xl"
+        />
+      </div>
+
+      <!-- Основное видео или фото обложки -->
       <video
         v-if="showVideoPlayer && recipe.video_preview_url"
         :src="recipe.video_preview_url"
         controls
         autoplay
         playsinline
-        class="h-full w-full object-cover"
+        class="relative z-[1] h-full w-full bg-black/35 object-contain pt-[max(env(safe-area-inset-top),2.25rem)]"
       />
       <CachedImage
         v-else
         :src="recipe.cover_url"
         :alt="recipe.title"
-        img-class="h-full w-full object-cover"
+        img-class="relative z-[1] h-full w-full object-cover"
       />
 
+      <!-- Верхний контрастный градиент под системные часы и иконки статус-бара -->
+      <div
+        class="pointer-events-none absolute inset-x-0 top-0 z-[2] h-32 bg-gradient-to-b from-black/65 via-black/30 to-transparent"
+      />
+
+      <!-- Нижний градиент под название блюда и плавное растворение к карточке -->
       <div
         v-if="!showVideoPlayer"
-        class="pointer-events-none absolute inset-0 bg-hero-scrim"
+        class="pointer-events-none absolute inset-x-0 bottom-0 z-[2] h-40 bg-gradient-to-t from-black/75 via-black/30 to-transparent"
       />
 
-      <!-- Верхние кнопки управления -->
-      <div class="absolute inset-x-4 top-4 flex items-center justify-between gap-2">
+      <!-- Плавающие кнопки управления ниже высоты статус-бара -->
+      <div class="absolute inset-x-4 top-[max(env(safe-area-inset-top),2.25rem)] z-20 flex items-center justify-between gap-2">
         <button
           type="button"
           aria-label="Назад к каталогу"
-          class="tactile glass-pill inline-flex h-10 w-10 items-center justify-center rounded-full"
+          class="tactile glass-pill inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full"
           @click="emit('back')"
         >
           <ArrowLeft class="h-5 w-5" aria-hidden="true" />
         </button>
 
-        <div class="flex items-center gap-2">
+        <div class="flex min-w-0 items-center gap-2">
           <span
             v-if="wakeLockActive"
-            class="glass-pill inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-[11px] font-medium"
+            class="glass-pill inline-flex shrink-0 items-center gap-1 rounded-full px-3 py-1.5 text-[11px] font-medium"
           >
             <Sun class="h-3.5 w-3.5 text-[#E8C58E]" aria-hidden="true" />
             Экран активен
           </span>
-          <span class="glass-pill rounded-full px-3 py-1.5 text-[11px] font-semibold">
+          <span class="glass-pill truncate rounded-full px-3 py-1.5 text-[11px] font-semibold">
             {{ recipe.category }}
           </span>
         </div>
@@ -239,7 +258,7 @@ function formatNoteDate(iso: string): string {
       <button
         v-if="recipe.video_preview_url && !showVideoPlayer"
         type="button"
-        class="tactile glass-pill absolute bottom-6 right-4 inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold shadow-glass"
+        class="tactile glass-pill absolute bottom-7 right-4 z-10 inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold shadow-glass"
         @click="showVideoPlayer = true"
       >
         <Play class="h-4 w-4 fill-current" aria-hidden="true" />
@@ -248,7 +267,7 @@ function formatNoteDate(iso: string): string {
 
       <div
         v-if="!showVideoPlayer"
-        class="pointer-events-none absolute bottom-6 left-5"
+        class="pointer-events-none absolute bottom-7 left-5 z-10"
         :class="recipe.video_preview_url ? 'right-36' : 'right-5'"
       >
         <h1 class="break-words font-display text-2xl font-extrabold leading-tight text-white drop-shadow-sm">
@@ -258,7 +277,7 @@ function formatNoteDate(iso: string): string {
     </div>
 
     <!-- Основная карточка контента с плавным наездом на обложку -->
-    <div class="relative -mt-4 space-y-5 rounded-t-4xl bg-canvas px-4 pt-6 sm:px-5">
+    <div class="relative z-10 -mt-5 space-y-5 rounded-t-4xl bg-canvas px-4 pt-6 sm:px-5">
       <p v-if="recipe.description" class="break-words text-sm leading-relaxed text-ink-secondary">
         {{ recipe.description }}
       </p>
@@ -296,37 +315,37 @@ function formatNoteDate(iso: string): string {
         </div>
       </div>
 
-      <!-- КБЖУ на 1 порцию + общий пересчитанный выход -->
+      <!-- Пищевая ценность строго на 100 г готового блюда -->
       <div
-        v-if="nutritionPerServing.calories !== null"
+        v-if="recipe.calories !== null"
         class="organic-card rounded-3xl border border-hairline bg-surface p-4 shadow-organic-sm"
       >
-        <div class="mb-2.5 flex items-center justify-between text-xs">
+        <div class="mb-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
           <span class="flex items-center gap-1.5 font-display font-bold text-ink">
             <Flame class="h-4 w-4 text-accent" aria-hidden="true" />
-            КБЖУ на 1 порцию
+            Пищевая ценность на 100 г
           </span>
-          <span v-if="nutritionScaledTotal.calories !== null" class="text-[11px] text-ink-tertiary tabular-nums">
-            Всего сейчас: {{ nutritionScaledTotal.calories }} ккал
+          <span v-if="wholeDishCalories !== null" class="text-[11px] text-ink-tertiary tabular-nums">
+            Весь объём: {{ wholeDishCalories }} ккал
           </span>
         </div>
 
         <div class="grid grid-cols-4 gap-2 text-center tabular-nums">
           <div class="rounded-2xl bg-canvas/80 py-2">
             <div class="text-[10px] text-ink-tertiary">Ккал</div>
-            <div class="text-sm font-bold text-ink">{{ nutritionPerServing.calories }}</div>
+            <div class="text-sm font-bold text-ink">{{ Math.round(recipe.calories) }}</div>
           </div>
           <div class="rounded-2xl bg-canvas/80 py-2">
             <div class="text-[10px] text-ink-tertiary">Белки</div>
-            <div class="text-sm font-bold text-ink">{{ nutritionPerServing.proteins ?? '—' }} г</div>
+            <div class="text-sm font-bold text-ink">{{ recipe.proteins ?? '—' }} г</div>
           </div>
           <div class="rounded-2xl bg-canvas/80 py-2">
             <div class="text-[10px] text-ink-tertiary">Жиры</div>
-            <div class="text-sm font-bold text-ink">{{ nutritionPerServing.fats ?? '—' }} г</div>
+            <div class="text-sm font-bold text-ink">{{ recipe.fats ?? '—' }} г</div>
           </div>
           <div class="rounded-2xl bg-canvas/80 py-2">
             <div class="text-[10px] text-ink-tertiary">Углев.</div>
-            <div class="text-sm font-bold text-ink">{{ nutritionPerServing.carbs ?? '—' }} г</div>
+            <div class="text-sm font-bold text-ink">{{ recipe.carbs ?? '—' }} г</div>
           </div>
         </div>
       </div>
@@ -654,12 +673,23 @@ function formatNoteDate(iso: string): string {
           <li
             v-for="note in recipeNotes"
             :key="note.id"
-            class="rounded-2xl bg-canvas/80 px-3.5 py-2.5 text-xs leading-relaxed text-ink"
+            class="flex items-start justify-between gap-2.5 rounded-2xl bg-canvas/80 px-3.5 py-2.5 text-xs leading-relaxed text-ink"
           >
-            <p>{{ note.note_text }}</p>
-            <span class="mt-1 block text-[10px] text-ink-tertiary">
-              {{ formatNoteDate(note.created_at) }}
-            </span>
+            <div class="min-w-0 flex-1">
+              <p class="break-words">{{ note.note_text }}</p>
+              <span class="mt-1 block text-[10px] text-ink-tertiary">
+                {{ formatNoteDate(note.created_at) }}
+              </span>
+            </div>
+
+            <button
+              type="button"
+              aria-label="Удалить заметку"
+              class="tactile shrink-0 rounded-xl p-1.5 text-ink-tertiary hover:bg-danger/10 hover:text-danger"
+              @click="recipesStore.deleteNote(recipe.id, note.id)"
+            >
+              <Trash2 class="h-3.5 w-3.5" aria-hidden="true" />
+            </button>
           </li>
         </ul>
       </section>

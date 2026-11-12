@@ -1,7 +1,7 @@
 import { computed, ref } from 'vue';
 import { defineStore } from 'pinia';
 import type { RealtimeChannel } from '@supabase/supabase-js';
-import type { ScaledIngredient, ShoppingListItem } from '@cookbook/shared';
+import { normalizeIngredient, type ScaledIngredient, type ShoppingListItem } from '@cookbook/shared';
 import { supabase } from '@/lib/supabase';
 import {
   getCachedShoppingList,
@@ -26,6 +26,14 @@ export const useShoppingListStore = defineStore('mobile-shopping', () => {
 
   const uncheckedCount = computed(
     () => items.value.filter((i) => !i.is_checked).length,
+  );
+
+  const checkedCount = computed(
+    () => items.value.filter((i) => i.is_checked).length,
+  );
+
+  const allChecked = computed(
+    () => items.value.length > 0 && items.value.every((i) => i.is_checked),
   );
 
   const sortedItems = computed(() =>
@@ -130,7 +138,7 @@ export const useShoppingListStore = defineStore('mobile-shopping', () => {
     const nowIso = new Date().toISOString();
 
     for (const entry of batch) {
-      const cleanName = entry.product_name.trim();
+      const cleanName = normalizeIngredient(entry.product_name).name;
       const cleanUnit = entry.unit.trim() || 'шт';
       const qty = Number(entry.amount) > 0 ? Number(entry.amount) : 1;
       const recipeTitle = entry.recipe_title?.trim() || null;
@@ -251,7 +259,7 @@ export const useShoppingListStore = defineStore('mobile-shopping', () => {
     unit: string,
     recipeTitle: string | null = null,
   ) {
-    const cleanName = productName.trim();
+    const cleanName = normalizeIngredient(productName).name;
     const cleanUnit = unit.trim() || 'шт';
     if (!cleanName) return;
 
@@ -281,13 +289,13 @@ export const useShoppingListStore = defineStore('mobile-shopping', () => {
     recipeTitle: string,
   ): number {
     const batch: OfflineShoppingBatchPayloadItem[] = scaledIngredients
-      .filter((ing) => ing.name.trim().length > 0)
       .map((ing) => ({
-        product_name: ing.name.trim(),
+        product_name: normalizeIngredient(ing.name).name,
         amount: ing.scaledAmount ?? 1,
         unit: ing.unit.trim() || 'шт',
         recipe_title: recipeTitle,
-      }));
+      }))
+      .filter((item) => item.product_name.length > 0);
 
     if (batch.length === 0) return 0;
 
@@ -310,7 +318,7 @@ export const useShoppingListStore = defineStore('mobile-shopping', () => {
 
     const nextPatch: ShoppingItemPatch = {};
     if (patch.product_name !== undefined) {
-      const cleanName = patch.product_name.trim();
+      const cleanName = normalizeIngredient(patch.product_name).name;
       if (cleanName) {
         target.product_name = cleanName;
         nextPatch.product_name = cleanName;
@@ -358,6 +366,24 @@ export const useShoppingListStore = defineStore('mobile-shopping', () => {
     }
   }
 
+  async function toggleAllChecked() {
+    if (items.value.length === 0) return;
+    const nextState = !allChecked.value;
+
+    for (const item of items.value) {
+      item.is_checked = nextState;
+    }
+    await persistCache();
+
+    const remoteIds = items.value.map((i) => i.id).filter((id) => !id.startsWith('local-'));
+    if (navigator.onLine && remoteIds.length > 0) {
+      await supabase
+        .from('shopping_list')
+        .update({ is_checked: nextState })
+        .in('id', remoteIds);
+    }
+  }
+
   async function clearChecked() {
     const checkedIds = items.value.filter((i) => i.is_checked).map((i) => i.id);
     if (checkedIds.length === 0) return;
@@ -371,11 +397,31 @@ export const useShoppingListStore = defineStore('mobile-shopping', () => {
     }
   }
 
+  async function clearAll() {
+    if (items.value.length === 0) return;
+    const remoteIds = items.value.map((i) => i.id).filter((id) => !id.startsWith('local-'));
+
+    items.value = [];
+    await persistCache();
+
+    const queue = await getOfflineQueue();
+    const withoutBatches = queue.filter((q) => q.type !== 'add_shopping_batch');
+    if (withoutBatches.length !== queue.length) {
+      await setOfflineQueue(withoutBatches);
+    }
+
+    if (navigator.onLine && remoteIds.length > 0) {
+      await supabase.from('shopping_list').delete().in('id', remoteIds);
+    }
+  }
+
   return {
     items,
     loading,
     realtimeConnected,
     uncheckedCount,
+    checkedCount,
+    allChecked,
     sortedItems,
     loadInitial,
     fetchItems,
@@ -386,7 +432,9 @@ export const useShoppingListStore = defineStore('mobile-shopping', () => {
     addIngredientsFromRecipe,
     updateItem,
     toggleItem,
+    toggleAllChecked,
     deleteItem,
     clearChecked,
+    clearAll,
   };
 });

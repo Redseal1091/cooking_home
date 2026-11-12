@@ -5,6 +5,10 @@
 @tailwind utilities;
 
 @layer base {
+  dialog:not([open]) {
+    pointer-events: none;
+  }
+
   /* Native modal scroll containment (prevents page scroll behind modal) */
   dialog:modal {
     overscroll-behavior: contain;
